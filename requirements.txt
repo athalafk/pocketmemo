@@ -1,0 +1,31 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Telegram bot
+python-telegram-bot==21.10
+
+# LLM providers
+google-generativeai==0.8.3
+openai==1.59.6  # used only when LLM_PROVIDER=openai (OpenAI-compatible backends)
+
+# Database (async)
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+pgvector==0.3.6
+
+# Config & validation
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# Secret encryption (API keys stored via the bot)
+cryptography==44.0.0
+
+# Document export
+python-docx==1.1.2
+
+# Utilities
+python-dateutil==2.9.0
+pytz==2024.2
+httpx==0.28.1
