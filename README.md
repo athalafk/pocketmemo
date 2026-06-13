@@ -77,7 +77,8 @@ Telegram ──polling/webhook──▶ FastAPI ──▶ Intent classifier (LLM
 - **Runtime:** Python 3.11, FastAPI, python-telegram-bot (polling **or** webhook)
 - **LLM:** Gemini, OpenAI-compatible, or Ollama (chat + vision + embeddings) via a
   provider-agnostic interface — switch with one `.env` setting
-- **Database:** PostgreSQL 16 + pgvector
+- **Database:** PostgreSQL 16 + pgvector, **or** SQLite (single file, vector search in
+  Python) for ultra-light local installs
 - **Scheduler:** lightweight asyncio poller (reminders survive restarts)
 - **i18n:** all user-facing text in JSON locale files (`pocketmemo/locales/`)
 
@@ -94,19 +95,49 @@ cd pocketmemo
 ./install.sh                 # Windows: powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-It asks a few questions (bot token, LLM provider + key, …), writes `.env` for you, and
-starts everything with Docker. You can leave the API key blank and set it later in chat
-with `/llm`.
+It asks a few questions and writes `.env` for you. First it asks the **install
+method**:
+
+- **`docker`** (recommended for servers) — runs the bot **and** PostgreSQL + pgvector in
+  containers. Nothing else to install.
+- **`sqlite`** (ultra-light) — no Docker and no database server: your data lives in a
+  single `pocketmemo.db` file. Semantic search runs in pure Python, so it's perfect for
+  a personal install on a laptop or small box. On Linux the installer can also set up a
+  `systemd` service.
+- **`native`** — runs in a local Python virtualenv but against **your own** PostgreSQL
+  with the pgvector extension (no Docker).
+
+You can leave the API key blank and set it later in chat with `/llm`.
 
 ### Manual (Docker)
 
 ```bash
 cp .env.example .env
 # edit .env: TELEGRAM_BOT_TOKEN, DB_PASSWORD, LLM_PROVIDER + its key
-# (BOT_MODE=polling is the default — no domain needed)
+# (INSTALL_METHOD=docker and BOT_MODE=polling are the defaults — no domain needed)
 docker compose up -d --build
 docker compose exec bot alembic upgrade head
 ```
+
+### Manual (SQLite, no Docker, no DB server)
+
+The lightest way to run, anywhere with Python 3.11+:
+
+```bash
+cp .env.example .env
+# edit .env: set INSTALL_METHOD=sqlite, comment out the DB_* lines, and add
+#            DATABASE_URL=sqlite+aiosqlite:///./pocketmemo.db
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn pocketmemo.main:app --host 127.0.0.1 --port 8473
+```
+
+### Manual (native, your own PostgreSQL)
+
+Same as above, but set `INSTALL_METHOD=native` and
+`DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/dbname` (the database must have
+the pgvector extension).
 
 Open Telegram, message your bot `/start`, and you're in.
 
@@ -126,7 +157,20 @@ PocketMemo can receive updates two ways, controlled by **`BOT_MODE`**:
   tunnel like [ngrok](https://ngrok.com) or
   [cloudflared](https://github.com/cloudflare/cloudflared).
 
-## 💻 Local development (without Docker)
+## 🔄 Updating
+
+When a new version is released, pull it in with one command from your `pocketmemo`
+folder:
+
+```bash
+./update.sh                  # Windows: powershell -ExecutionPolicy Bypass -File update.ps1
+```
+
+It fetches the latest code, then — depending on how you installed — rebuilds the
+Docker containers **or** updates the venv, applies any database migrations, and
+restarts the bot. Your `.env` is never touched (it's git-ignored).
+
+## 💻 Local development
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
@@ -135,6 +179,20 @@ pip install -r requirements.txt
 alembic upgrade head
 uvicorn pocketmemo.main:app --reload --port 8473
 ```
+
+### Tests
+
+The test suite runs entirely on SQLite — no PostgreSQL, secrets, or network needed:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+
+It covers the cosine-distance math, secret encryption, English/Indonesian locale
+parity, settings parsing, the SQLite vector search end-to-end, and applying the Alembic
+migration on SQLite. GitHub Actions runs it on every push and pull request
+(Python 3.11 & 3.12) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## ⚙️ Configuration
 
@@ -176,9 +234,9 @@ key in chat, delete that message — Telegram keeps your chat history.
 ## 🗺️ Roadmap
 
 - [x] Pluggable LLM providers — Gemini, OpenAI-compatible, Ollama
-- [ ] Optional SQLite backend for ultra-light local installs
+- [x] Optional SQLite backend for ultra-light local installs
 - [ ] One-click deploy templates (Railway / Render / Fly.io)
-- [ ] Test suite + CI
+- [x] Test suite + CI
 - [ ] Documentation website
 
 ## 🤝 Contributing
