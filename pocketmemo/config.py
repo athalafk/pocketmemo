@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     max_file_size_mb: int = 50
 
+    # Where user files and exports are kept. Relative to the working directory, so it
+    # resolves to /app/storage in Docker (mounted volume) and ./storage for native
+    # installs. Override with an absolute path if you prefer.
+    storage_dir: str = "storage"
+
     # Access control: comma-separated Telegram user IDs (empty = open to all).
     allowed_user_ids: str = ""
 
