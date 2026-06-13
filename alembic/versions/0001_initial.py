@@ -10,10 +10,9 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from pgvector.sqlalchemy import Vector
-from sqlalchemy.dialects import postgresql
 
 from pocketmemo.config import get_settings
+from pocketmemo.db.types import Embedding, json_type
 
 revision: str = "0001_initial"
 down_revision: Union[str, None] = None
@@ -24,9 +23,15 @@ depends_on: Union[str, Sequence[str], None] = None
 _DIM = get_settings().embedding_dim
 
 
+def _is_postgres() -> bool:
+    return op.get_bind().dialect.name == "postgresql"
+
+
 def _ivfflat(table: str) -> None:
-    """Create a cosine ivfflat index on <table>.embedding (only when dim <= 2000)."""
-    if _DIM <= 2000:
+    """Cosine ivfflat index on <table>.embedding (PostgreSQL only, dim <= 2000).
+
+    On SQLite there is no pgvector; similarity search is done in Python instead."""
+    if _is_postgres() and _DIM <= 2000:
         op.execute(
             f"CREATE INDEX ix_{table}_embedding ON {table} "
             f"USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"
@@ -34,7 +39,8 @@ def _ivfflat(table: str) -> None:
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    if _is_postgres():
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     op.create_table(
         "users",
@@ -47,7 +53,7 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.func.now(),
             nullable=False,
         ),
     )
@@ -59,10 +65,10 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("summary", sa.Text(), nullable=True),
-        sa.Column("embedding", Vector(_DIM), nullable=True),
+        sa.Column("embedding", Embedding(_DIM), nullable=True),
         sa.Column("source_type", sa.String(32), server_default="text"),
-        sa.Column("extra_data", postgresql.JSONB(), server_default="{}"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("extra_data", json_type(), server_default="{}"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_memories_user_id", "memories", ["user_id"])
     _ivfflat("memories")
@@ -73,7 +79,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("kind", sa.String(8), server_default="file", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_folders_user_id", "folders", ["user_id"])
 
@@ -84,8 +90,8 @@ def upgrade() -> None:
         sa.Column("folder_id", sa.Integer(), sa.ForeignKey("folders.id", ondelete="SET NULL"), nullable=True),
         sa.Column("title", sa.String(512), nullable=False),
         sa.Column("content", sa.Text(), nullable=True),
-        sa.Column("embedding", Vector(_DIM), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("embedding", Embedding(_DIM), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_notes_user_id", "notes", ["user_id"])
     op.create_index("ix_notes_folder_id", "notes", ["folder_id"])
@@ -105,9 +111,9 @@ def upgrade() -> None:
         sa.Column("mime_type", sa.String(128), nullable=True),
         sa.Column("file_size", sa.Integer(), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("embedding", Vector(_DIM), nullable=True),
-        sa.Column("extra_data", postgresql.JSONB(), server_default="{}"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("embedding", Embedding(_DIM), nullable=True),
+        sa.Column("extra_data", json_type(), server_default="{}"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_files_user_id", "files", ["user_id"])
     op.create_index("ix_files_note_id", "files", ["note_id"])
@@ -126,7 +132,7 @@ def upgrade() -> None:
         sa.Column("link", sa.String(1024), nullable=True),
         sa.Column("location", sa.String(512), nullable=True),
         sa.Column("is_sent", sa.Boolean(), server_default=sa.false()),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_reminders_user_id", "reminders", ["user_id"])
     op.create_index("ix_reminders_remind_at", "reminders", ["remind_at"])
@@ -148,8 +154,8 @@ def upgrade() -> None:
         sa.Column("location", sa.String(512), nullable=True),
         sa.Column("meeting_link", sa.String(512), nullable=True),
         sa.Column("external_event_id", sa.String(256), nullable=True),
-        sa.Column("participants", postgresql.JSONB(), server_default="[]"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("participants", json_type(), server_default="[]"),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_events_user_id", "events", ["user_id"])
 
@@ -159,7 +165,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("role", sa.String(16), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_conversations_user_created", "conversations", ["user_id", "created_at"])
 
@@ -167,7 +173,7 @@ def upgrade() -> None:
         "settings",
         sa.Column("key", sa.String(64), primary_key=True),
         sa.Column("value", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
 
 

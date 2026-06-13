@@ -1,4 +1,4 @@
-"""Memory service — save and recall quick facts via pgvector semantic search."""
+"""Memory service — save and recall quick facts via semantic search."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import logging
 from sqlalchemy import select
 
 from pocketmemo.database import SessionLocal
+from pocketmemo.db.search import nearest_neighbors
 from pocketmemo.i18n import language_directive, t
 from pocketmemo.llm import llm
 from pocketmemo.models import Memory, User
@@ -43,15 +44,8 @@ async def save_memory(user: User, content: str) -> str:
     # Look at the single nearest existing fact; if it's very similar, ask the LLM
     # whether the new fact replaces it (so "parked at A28" updates "parked at B17").
     async with SessionLocal() as session:
-        dist = Memory.embedding.cosine_distance(embedding).label("dist")
-        row = (
-            await session.execute(
-                select(Memory, dist)
-                .where(Memory.user_id == user.id, Memory.embedding.is_not(None))
-                .order_by(dist)
-                .limit(1)
-            )
-        ).first()
+        rows = await nearest_neighbors(session, Memory, embedding, user_id=user.id, limit=1)
+    row = rows[0] if rows else None
 
     if row is not None:
         nearest, distance = row
@@ -119,13 +113,10 @@ async def recall_memory(user: User, query: str) -> str:
 
     query_embedding = await llm.embed_query(query)
     async with SessionLocal() as session:
-        stmt = (
-            select(Memory)
-            .where(Memory.user_id == user.id, Memory.embedding.is_not(None))
-            .order_by(Memory.embedding.cosine_distance(query_embedding))
-            .limit(RECALL_TOP_K)
+        rows = await nearest_neighbors(
+            session, Memory, query_embedding, user_id=user.id, limit=RECALL_TOP_K
         )
-        memories = (await session.execute(stmt)).scalars().all()
+    memories = [m for m, _ in rows]
 
     if not memories:
         return t("memory_recall_none", user.language)

@@ -11,9 +11,10 @@ openai==1.59.6  # used only when LLM_PROVIDER=openai (OpenAI-compatible backends
 
 # Database (async)
 sqlalchemy[asyncio]==2.0.36
-asyncpg==0.30.0
+asyncpg==0.30.0          # PostgreSQL driver (server / Docker installs)
+aiosqlite==0.20.0        # SQLite driver (ultra-light local installs)
 alembic==1.14.0
-pgvector==0.3.6
+pgvector==0.3.6          # only used on PostgreSQL
 
 # Config & validation
 pydantic==2.10.4

@@ -15,7 +15,9 @@ from sqlalchemy import select
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from pocketmemo.config import get_settings
 from pocketmemo.database import SessionLocal
+from pocketmemo.db.search import nearest_neighbors
 from pocketmemo.i18n import t
 from pocketmemo.llm import llm
 from pocketmemo.models import Folder, Note, StoredFile, User
@@ -29,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 RECALL_CANDIDATES = 5
 RECALL_PREFILTER_MAX_DISTANCE = 0.9
-EXPORT_ROOT = Path("/app/storage/exports")
+EXPORT_ROOT = Path(get_settings().storage_dir) / "exports"
 
 NOTE_MATCH_SYSTEM_PROMPT = (
     "You are a note matcher. Pick the ONE note from the list that best matches what "
@@ -147,14 +149,9 @@ async def recall_note(
 
     query_embedding = await llm.embed_query(query)
     async with SessionLocal() as session:
-        dist = Note.embedding.cosine_distance(query_embedding).label("dist")
-        stmt = (
-            select(Note, dist)
-            .where(Note.user_id == user.id, Note.embedding.is_not(None))
-            .order_by(dist)
-            .limit(RECALL_CANDIDATES)
+        rows = await nearest_neighbors(
+            session, Note, query_embedding, user_id=user.id, limit=RECALL_CANDIDATES
         )
-        rows = (await session.execute(stmt)).all()
 
     if not rows:
         return t("note_recall_none", lang)

@@ -1,8 +1,9 @@
-"""File service — store & retrieve user files via Telegram + pgvector search.
+"""File service — store & retrieve user files via Telegram + semantic search.
 
-Files are saved to /app/storage/files/{telegram_id}/ (a persistent Docker
-volume) along with their telegram_file_id for instant re-sending. Photos and
-PDFs are described with vision so they can be found by their contents later.
+Files are saved under <STORAGE_DIR>/files/{telegram_id}/ (a persistent Docker
+volume, or ./storage for native installs) along with their telegram_file_id for
+instant re-sending. Photos and PDFs are described with vision so they can be found
+by their contents later.
 """
 
 from __future__ import annotations
@@ -15,14 +16,16 @@ from sqlalchemy import select
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from pocketmemo.config import get_settings
 from pocketmemo.database import SessionLocal
+from pocketmemo.db.search import nearest_neighbors
 from pocketmemo.i18n import t
 from pocketmemo.llm import llm
 from pocketmemo.models import StoredFile, User
 
 logger = logging.getLogger(__name__)
 
-STORAGE_ROOT = Path("/app/storage/files")
+STORAGE_ROOT = Path(get_settings().storage_dir) / "files"
 
 # Nearest candidates handed to the LLM matcher when recalling a file.
 RECALL_CANDIDATES = 5
@@ -163,14 +166,9 @@ async def recall_file(
 
     query_embedding = await llm.embed_query(query)
     async with SessionLocal() as session:
-        dist = StoredFile.embedding.cosine_distance(query_embedding).label("dist")
-        stmt = (
-            select(StoredFile, dist)
-            .where(StoredFile.user_id == user.id, StoredFile.embedding.is_not(None))
-            .order_by(dist)
-            .limit(RECALL_CANDIDATES)
+        rows = await nearest_neighbors(
+            session, StoredFile, query_embedding, user_id=user.id, limit=RECALL_CANDIDATES
         )
-        rows = (await session.execute(stmt)).all()
 
     if not rows:
         return t("file_none", user.language)

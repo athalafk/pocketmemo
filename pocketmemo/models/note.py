@@ -2,8 +2,8 @@
 
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-from pgvector.sqlalchemy import Vector
 
+from pocketmemo.db.types import Embedding
 from pocketmemo.models.base import Base, TimestampMixin
 from pocketmemo.models.memory import EMBEDDING_DIM
 
@@ -21,7 +21,7 @@ class Note(Base, TimestampMixin):
     )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     content: Mapped[str | None] = mapped_column(Text)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
+    embedding: Mapped[list[float] | None] = mapped_column(Embedding(EMBEDDING_DIM))
 
     def __repr__(self) -> str:
         return f"<Note id={self.id} title={self.title!r}>"

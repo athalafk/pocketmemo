@@ -3,9 +3,9 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+from pocketmemo.db.types import json_type
 from pocketmemo.models.base import Base, TimestampMixin
 
 
@@ -23,7 +23,7 @@ class Event(Base, TimestampMixin):
     location: Mapped[str | None] = mapped_column(String(512))
     meeting_link: Mapped[str | None] = mapped_column(String(512))
     external_event_id: Mapped[str | None] = mapped_column(String(256))
-    participants: Mapped[list] = mapped_column(JSONB, default=list)
+    participants: Mapped[list] = mapped_column(json_type(), default=list)
 
     def __repr__(self) -> str:
         return f"<Event id={self.id} title={self.title!r} at={self.start_time}>"
