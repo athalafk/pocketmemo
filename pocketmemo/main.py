@@ -6,7 +6,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import secrets
+import tempfile
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, status
 from sqlalchemy import text
@@ -16,8 +19,9 @@ from telegram.ext import Application, ApplicationBuilder
 from pocketmemo import settings_store
 from pocketmemo.bot.handlers import register_handlers
 from pocketmemo.config import get_settings
-from pocketmemo.database import SessionLocal
+from pocketmemo.database import DIALECT, SessionLocal
 from pocketmemo.llm import llm
+from pocketmemo.llm.service import effective_provider_name
 from pocketmemo.services import reminder
 
 REMINDER_POLL_INTERVAL = 60  # seconds
@@ -80,12 +84,79 @@ async def _reminder_poller(bot) -> None:
         await asyncio.sleep(REMINDER_POLL_INTERVAL)
 
 
+def _ensure_storage_writable() -> Path:
+    """Create the storage directory and verify that the process can write to it."""
+    storage = Path(settings.storage_dir).expanduser()
+    try:
+        storage.mkdir(parents=True, exist_ok=True)
+        if not storage.is_dir():
+            raise NotADirectoryError(storage)
+        with tempfile.NamedTemporaryFile(prefix=".pocketmemo-", dir=storage):
+            pass
+    except OSError as exc:
+        raise RuntimeError(
+            f"Storage directory is not writable: {storage}. "
+            "Check STORAGE_DIR and its permissions."
+        ) from exc
+    return storage
+
+
+async def _run_startup_preflight() -> None:
+    """Fail early when local dependencies or persisted settings are unusable."""
+    storage = _ensure_storage_writable()
+    try:
+        async with SessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise RuntimeError(
+            "Database connection failed. Check DATABASE_URL and ensure the database "
+            "is running."
+        ) from exc
+
+    try:
+        await settings_store.load_settings()
+    except Exception as exc:
+        raise RuntimeError(
+            "Database is reachable but PocketMemo settings could not be loaded. "
+            "Run 'alembic upgrade head' and restart the application."
+        ) from exc
+
+    llm.reconfigure()
+    provider_name = effective_provider_name()
+    if provider_name not in {"gemini", "openai", "ollama"}:
+        raise RuntimeError(
+            f"Unknown LLM provider {provider_name!r}. "
+            "Choose gemini, openai, or ollama."
+        )
+    if (
+        provider_name == "gemini"
+        and not settings_store.get_secret("gemini_api_key")
+        and not settings.gemini_api_key.strip()
+    ):
+        if not settings.allowed_user_ids_set:
+            raise RuntimeError(
+                "GEMINI_API_KEY is not configured, and /llm is unavailable because "
+                "ALLOWED_USER_IDS is empty. Set the API key or configure an admin ID."
+            )
+        logger.warning("GEMINI_API_KEY is not set; configure it with /llm before use")
+
+    logger.info(
+        "Startup preflight passed (database=%s, storage=%s, llm=%s, max_file_size=%sMB)",
+        DIALECT,
+        storage.resolve(),
+        provider_name,
+        settings.max_file_size_mb,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global telegram_app, reminder_task
 
-    mode = (settings.bot_mode or "polling").lower()
+    mode = settings.bot_mode
     logger.info("Starting PocketMemo (mode=%s)...", mode)
+
+    await _run_startup_preflight()
 
     builder = ApplicationBuilder().token(settings.telegram_bot_token)
     if mode == "webhook":
@@ -113,13 +184,6 @@ async def lifespan(app: FastAPI):
         await telegram_app.bot.delete_webhook(drop_pending_updates=True)
         await telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
         logger.info("Polling for updates started")
-
-    # Load DB-stored settings (LLM provider/keys configured via the bot) and apply.
-    try:
-        await settings_store.load_settings()
-        llm.reconfigure()
-    except Exception:
-        logger.exception("Failed to load settings at startup")
 
     await _set_bot_commands(telegram_app.bot)
     reminder_task = asyncio.create_task(_reminder_poller(telegram_app.bot))
@@ -175,12 +239,12 @@ async def telegram_webhook(request: Request) -> dict[str, bool]:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Bot not initialized"
         )
-    if (settings.bot_mode or "polling").lower() != "webhook":
+    if settings.bot_mode != "webhook":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Webhook disabled (polling mode)"
         )
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-    if secret != settings.webhook_secret:
+    if not secrets.compare_digest(secret, settings.webhook_secret):
         logger.warning("Webhook called with invalid secret token")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid secret token")
 

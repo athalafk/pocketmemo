@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy import select
 from telegram import Update
@@ -31,6 +32,18 @@ STORAGE_ROOT = Path(get_settings().storage_dir) / "files"
 RECALL_CANDIDATES = 5
 # Coarse pre-filter: drop candidates farther than this before asking the LLM.
 RECALL_PREFILTER_MAX_DISTANCE = 0.9
+
+
+class FileTooLargeError(ValueError):
+    """Raised before an attachment larger than the configured limit is processed."""
+
+    def __init__(self, actual_size: int, max_size_mb: int) -> None:
+        self.actual_size = actual_size
+        self.max_size_mb = max_size_mb
+        super().__init__(
+            f"attachment is {actual_size} bytes; maximum is {max_size_mb} MB"
+        )
+
 
 FILE_MATCH_SYSTEM_PROMPT = (
     "You are a file matcher. Pick the ONE file from the list that best matches the "
@@ -69,6 +82,36 @@ def _is_list_query(query: str) -> bool:
     return any(hint in ql for hint in _LIST_QUERY_HINTS)
 
 
+def attachment_file_size(message) -> int | None:
+    """Return Telegram's declared attachment size when available."""
+    if message.photo:
+        return getattr(message.photo[-1], "file_size", None)
+    if message.document:
+        return message.document.file_size
+    return None
+
+
+def ensure_file_size_allowed(file_size: int | None) -> None:
+    """Reject a known file size that exceeds MAX_FILE_SIZE_MB."""
+    if file_size is None:
+        return
+    max_size_mb = get_settings().max_file_size_mb
+    if file_size > max_size_mb * 1024 * 1024:
+        raise FileTooLargeError(file_size, max_size_mb)
+
+
+def _available_destination(user_dir: Path, unique_id: str, original_name: str) -> Path:
+    """Choose a destination without overwriting an existing stored file."""
+    base = user_dir / f"{unique_id}_{_sanitize(original_name)}"
+    if not base.exists():
+        return base
+    for number in range(2, 10_000):
+        candidate = base.with_name(f"{base.stem}_{number}{base.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise OSError(f"Could not allocate a unique path for {base.name}")
+
+
 async def save_file(
     update: Update, context: ContextTypes.DEFAULT_TYPE, user: User
 ) -> tuple[str, int]:
@@ -96,58 +139,74 @@ async def save_file(
     else:
         return t("file_unsupported_media", user.language), 0
 
+    ensure_file_size_allowed(file_size)
+
     user_dir = STORAGE_ROOT / str(user.telegram_id)
     user_dir.mkdir(parents=True, exist_ok=True)
-    dest = user_dir / f"{tg_obj.file_unique_id}_{_sanitize(original_name)}"
+    dest = _available_destination(user_dir, tg_obj.file_unique_id, original_name)
+    temp_path = user_dir / f".{uuid4().hex}.part"
+    finalized = False
 
-    tg_file = await context.bot.get_file(file_id)
-    await tg_file.download_to_drive(custom_path=str(dest))
+    try:
+        tg_file = await context.bot.get_file(file_id)
+        await tg_file.download_to_drive(custom_path=str(temp_path))
 
-    if file_size is None:
-        try:
-            file_size = dest.stat().st_size
-        except OSError:
-            file_size = None
+        file_size = temp_path.stat().st_size
+        ensure_file_size_allowed(file_size)
 
-    # Vision: describe photos/PDFs for smarter naming & search.
-    vision_desc = ""
-    if file_type == "photo" or mime_type == "application/pdf":
-        try:
-            vision_desc = await llm.describe_media(dest.read_bytes(), mime_type or "image/jpeg")
-        except Exception:
-            logger.exception("Vision failed for %s", dest)
+        # Vision: describe photos/PDFs for smarter naming & search.
+        vision_desc = ""
+        if file_type == "photo" or mime_type == "application/pdf":
+            try:
+                vision_desc = await llm.describe_media(
+                    temp_path.read_bytes(), mime_type or "image/jpeg"
+                )
+            except Exception:
+                logger.exception("Vision failed for %s", temp_path)
 
-    if caption:
-        display_name = caption
-    elif vision_desc:
-        display_name = vision_desc[:200]
-    else:
-        display_name = Path(original_name).stem or original_name
+        if caption:
+            display_name = caption
+        elif vision_desc:
+            display_name = vision_desc[:200]
+        else:
+            display_name = Path(original_name).stem or original_name
 
-    description = vision_desc or caption or None
-    embed_text = (
-        " ".join(p for p in (caption, vision_desc, Path(original_name).stem) if p).strip()
-        or display_name
-    )
-    embedding = await llm.embed(embed_text)
-
-    async with SessionLocal() as session:
-        stored = StoredFile(
-            user_id=user.id,
-            original_name=original_name,
-            display_name=display_name,
-            file_path=str(dest),
-            telegram_file_id=file_id,
-            file_type=file_type,
-            mime_type=mime_type,
-            file_size=file_size,
-            description=description,
-            embedding=embedding,
+        description = vision_desc or caption or None
+        embed_text = (
+            " ".join(
+                p for p in (caption, vision_desc, Path(original_name).stem) if p
+            ).strip()
+            or display_name
         )
-        session.add(stored)
-        await session.commit()
-        await session.refresh(stored)
-        file_id_db = stored.id
+        embedding = await llm.embed(embed_text)
+
+        temp_path.replace(dest)
+        finalized = True
+
+        async with SessionLocal() as session:
+            stored = StoredFile(
+                user_id=user.id,
+                original_name=original_name,
+                display_name=display_name,
+                file_path=str(dest),
+                telegram_file_id=file_id,
+                file_type=file_type,
+                mime_type=mime_type,
+                file_size=file_size,
+                description=description,
+                embedding=embedding,
+            )
+            session.add(stored)
+            await session.flush()
+            file_id_db = stored.id
+            await session.commit()
+    except Exception:
+        cleanup_path = dest if finalized else temp_path
+        try:
+            cleanup_path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("Failed to clean up incomplete file %s", cleanup_path)
+        raise
 
     logger.info("Saved file %r for user %s -> %s", display_name, user.id, dest)
     return t("file_saved", user.language, name=display_name), file_id_db

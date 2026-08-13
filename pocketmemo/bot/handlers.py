@@ -806,6 +806,14 @@ async def handle_attachment(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     else:
         media_file_id, media_mime = None, ""
 
+    try:
+        file_manager.ensure_file_size_allowed(
+            file_manager.attachment_file_size(message)
+        )
+    except file_manager.FileTooLargeError as exc:
+        await message.reply_text(t("file_too_large", lang, max_mb=exc.max_size_mb))
+        return
+
     # A caption that is a question/comment about the image → answer it, don't store.
     is_visual = media_mime.startswith("image/") or media_mime == "application/pdf"
     if caption and media_file_id and is_visual:
@@ -815,7 +823,10 @@ async def handle_attachment(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             try:
                 tg_file = await context.bot.get_file(media_file_id)
                 data = bytes(await tg_file.download_as_bytearray())
+                file_manager.ensure_file_size_allowed(len(data))
                 answer = await llm.answer_about_media(data, media_mime, caption)
+            except file_manager.FileTooLargeError as exc:
+                answer = t("file_too_large", lang, max_mb=exc.max_size_mb)
             except ResourceExhausted:
                 answer = t("quota_exceeded", lang)
             except Exception:
@@ -830,6 +841,8 @@ async def handle_attachment(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     file_id = 0
     try:
         reply, file_id = await file_manager.save_file(update, context, user)
+    except file_manager.FileTooLargeError as exc:
+        reply = t("file_too_large", lang, max_mb=exc.max_size_mb)
     except ResourceExhausted:
         logger.warning("Gemini quota exhausted (429) during save_file")
         reply = t("quota_exceeded", lang)

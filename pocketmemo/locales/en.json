@@ -14,6 +14,7 @@
   "memory_recall_none": "I don't have any relevant facts saved yet. Save one first and I'll remember 😉",
   "file_saved": "File saved 💾\nName: {name}",
   "file_unsupported_media": "I can't handle this kind of media yet.",
+  "file_too_large": "That file is too large. The maximum allowed size is {max_mb} MB.",
   "file_recall_what": "Which file would you like?",
   "file_none": "You don't have any saved files yet. Send a photo/document to store one 📎",
   "file_recall_none": "I couldn't find a file matching \"{query}\". Try a different name?",

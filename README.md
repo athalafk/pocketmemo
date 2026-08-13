@@ -203,10 +203,19 @@ All settings live in `.env` (see [`.env.example`](.env.example) for the full lis
 | `TELEGRAM_BOT_TOKEN` | Your bot token from @BotFather |
 | `BOT_MODE` | `polling` (default, no domain needed) or `webhook` |
 | `GEMINI_API_KEY` | Google Gemini API key |
-| `WEBHOOK_URL` / `WEBHOOK_SECRET` | Public webhook URL + secret (only if `BOT_MODE=webhook`) |
+| `WEBHOOK_URL` / `WEBHOOK_SECRET` | HTTPS callback and request-verification secret for webhook mode |
+| `ENCRYPTION_KEY` | Encrypts API keys stored through `/llm`; may fall back to `WEBHOOK_SECRET` |
 | `DEFAULT_LANGUAGE` | `en` or `id` for new users |
 | `ALLOWED_USER_IDS` | Comma-separated Telegram IDs (empty = open to all) |
 | `LLM_PROVIDER` | `gemini`, `openai`, or `ollama` |
+| `MAX_FILE_SIZE_MB` | Maximum photo/document size accepted by the bot (default `50`) |
+| `STORAGE_DIR` | Persistent directory for user files and exports (default `storage`) |
+
+PocketMemo validates these settings before it starts accepting Telegram updates. An
+invalid allowlist, unsupported database URL, insecure webhook configuration, or
+unwritable storage directory stops startup with a specific error. Set at least one of
+`ENCRYPTION_KEY` or `WEBHOOK_SECRET` so API keys saved through `/llm` use installation-
+specific encryption material.
 
 ### Choosing your LLM
 

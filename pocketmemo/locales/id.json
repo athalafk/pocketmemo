@@ -14,6 +14,7 @@
   "memory_recall_none": "Aku belum punya catatan yang relevan. Simpan dulu ya, nanti aku ingat 😉",
   "file_saved": "Berkas tersimpan 💾\nNama: {name}",
   "file_unsupported_media": "Aku belum bisa memproses jenis media ini.",
+  "file_too_large": "File itu terlalu besar. Ukuran maksimum yang diizinkan adalah {max_mb} MB.",
   "file_recall_what": "Mau ambil file yang mana?",
   "file_none": "Kamu belum punya file tersimpan. Kirim foto/dokumen untuk menyimpannya 📎",
   "file_recall_none": "Aku nggak nemu file yang cocok dengan \"{query}\". Coba sebut nama lain?",
