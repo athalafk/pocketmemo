@@ -87,6 +87,53 @@ class AgentRunnerTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.tool_calls, ("lookup",))
         self.assertIn("abc123", prompts[1])
 
+    async def test_agent_can_chain_multiple_context_tools(self) -> None:
+        decisions = iter(
+            [
+                {"type": "tool", "tool": "memories", "arguments": {}},
+                {"type": "tool", "tool": "reminders", "arguments": {}},
+                {"type": "final", "answer": "Prioritaskan laporan yang jatuh tempo besok."},
+            ]
+        )
+        prompts: list[str] = []
+
+        async def planner(prompt: str, system: str) -> dict:
+            prompts.append(prompt)
+            return next(decisions)
+
+        async def memories(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation="Kuliah membutuhkan laporan akhir")
+
+        async def reminders(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation="Laporan jatuh tempo besok")
+
+        tools = {
+            "memories": AgentTool(
+                name="memories",
+                description="Get memory context",
+                parameters={"type": "object"},
+                execute=memories,
+            ),
+            "reminders": AgentTool(
+                name="reminders",
+                description="Get reminder context",
+                parameters={"type": "object"},
+                execute=reminders,
+            ),
+        }
+        runner = AgentRunner(planner=planner, tools=tools)
+        result = await runner.run(
+            message="Apa prioritas saya berdasarkan memori kuliah dan reminder?",
+            history=[],
+            language="id",
+            context=_context(),
+        )
+
+        self.assertTrue(result.handled)
+        self.assertEqual(result.tool_calls, ("memories", "reminders"))
+        self.assertIn("laporan akhir", prompts[1])
+        self.assertIn("jatuh tempo besok", prompts[2])
+
     async def test_agent_falls_back_after_invalid_decisions(self) -> None:
         async def planner(prompt: str, system: str) -> dict:
             return {"unexpected": True}

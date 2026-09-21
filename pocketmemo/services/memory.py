@@ -117,16 +117,7 @@ async def recall_memory(user: User, query: str) -> str:
     if not query:
         return t("memory_recall_what", user.language)
 
-    query_embedding = await llm.embed_query(query)
-    async with SessionLocal() as session:
-        stmt = (
-            select(Memory)
-            .where(Memory.user_id == user.id, Memory.embedding.is_not(None))
-            .order_by(Memory.embedding.cosine_distance(query_embedding))
-            .limit(RECALL_TOP_K)
-        )
-        memories = (await session.execute(stmt)).scalars().all()
-
+    memories = await search_memories(user, query)
     if not memories:
         return t("memory_recall_none", user.language)
 
@@ -136,3 +127,25 @@ async def recall_memory(user: User, query: str) -> str:
     answer = await llm.chat(prompt, system_prompt=system)
     logger.info("Recalled %d memories for user %s", len(memories), user.id)
     return answer
+
+
+async def search_memories(user: User, query: str, limit: int = RECALL_TOP_K) -> list[Memory]:
+    """Return semantically relevant facts without generating a response.
+
+    This is the raw retrieval primitive used by the agent harness. Keeping
+    retrieval separate from answer generation lets the agent inspect the
+    observation, call another tool when needed, and synthesize one final answer.
+    """
+    query = (query or "").strip()
+    if not query or limit < 1:
+        return []
+
+    query_embedding = await llm.embed_query(query)
+    async with SessionLocal() as session:
+        stmt = (
+            select(Memory)
+            .where(Memory.user_id == user.id, Memory.embedding.is_not(None))
+            .order_by(Memory.embedding.cosine_distance(query_embedding))
+            .limit(limit)
+        )
+        return list((await session.execute(stmt)).scalars().all())

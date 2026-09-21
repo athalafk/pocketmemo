@@ -89,6 +89,10 @@ notes, files, or reminders. The harness enforces a maximum number of steps, tool
 timeouts, argument validation, duplicate-call protection, and safe fallback to the
 legacy intent router. It deliberately exposes no shell or arbitrary-code tool.
 
+Read-only context tools can return observations to the agent instead of replying
+immediately. The agent can then call another tool and synthesize one answer from
+multiple sources—for example, combining saved memories with active reminders.
+
 The JSON decision protocol works across Gemini, OpenAI-compatible backends, and
 Ollama without tying PocketMemo to one provider's function-calling API.
 
