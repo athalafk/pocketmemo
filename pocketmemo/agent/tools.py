@@ -109,7 +109,11 @@ async def _list_reminders(ctx: AgentContext, arguments: dict[str, Any]) -> ToolR
     observation = json.dumps(
         {
             "source": "active_reminders",
-            "items": [reminder.format_reminder_line(row, ctx.user) for row in rows],
+            "time_semantics": {
+                "event_at": "The actual class, meeting, task, or event time.",
+                "notification_at": "When PocketMemo sends the advance notification.",
+            },
+            "items": [reminder.reminder_agent_data(row, ctx.user) for row in rows],
         },
         ensure_ascii=False,
     )
@@ -185,8 +189,9 @@ def build_tools() -> dict[str, AgentTool]:
         AgentTool(
             name="list_reminders",
             description=(
-                "Fetch the user's active reminders as context. It may be combined with "
-                "other tools before producing the final answer."
+                "Fetch active reminders as structured context with separate event_at "
+                "and notification_at times. It may be combined with other tools before "
+                "producing the final answer."
             ),
             parameters=_object_schema({}),
             execute=_list_reminders,
