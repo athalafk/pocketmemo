@@ -65,3 +65,21 @@ class AgentEvalScoringTests(TestCase):
 
         self.assertTrue(outcome.correct)
         self.assertFalse(outcome.efficient)
+
+    def test_time_separator_dot_matches_colon_expectation(self) -> None:
+        case = EvalCase(
+            name="time",
+            message="test",
+            expected_tools=("list_reminders",),
+            must_contain=("11:30", "10:30"),
+        )
+        result = AgentResult(
+            handled=True,
+            reply="Waktu acara 11.30 WIB dan notifikasi 10.30 WIB.",
+            tool_calls=("list_reminders",),
+        )
+
+        outcome = score_case(case, result, planner_calls=2, elapsed_seconds=1.0)
+
+        self.assertTrue(outcome.correct)
+        self.assertTrue(outcome.content_match)

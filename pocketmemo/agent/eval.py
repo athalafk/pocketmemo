@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -70,6 +71,12 @@ class RequestPacer:
         if delay > 0:
             await asyncio.sleep(delay)
         self._last_request_started = time.monotonic()
+
+
+def _normalize_content(value: str) -> str:
+    """Normalize harmless formatting differences before content assertions."""
+    normalized = value.casefold()
+    return re.sub(r"(?<=\d)[.:](?=\d)", ":", normalized)
 
 
 def _memory_observation(*facts: str) -> str:
@@ -191,9 +198,9 @@ def score_case(
     tools_match = set(actual_tools) == set(case.expected_tools) and len(actual_tools) == len(
         set(actual_tools)
     )
-    answer = (result.reply or "").casefold()
-    content_match = all(item.casefold() in answer for item in case.must_contain) and all(
-        item.casefold() not in answer for item in case.must_not_contain
+    answer = _normalize_content(result.reply or "")
+    content_match = all(_normalize_content(item) in answer for item in case.must_contain) and all(
+        _normalize_content(item) not in answer for item in case.must_not_contain
     )
     correct = bool(result.handled and result.reply and tools_match and content_match)
     return EvalOutcome(
