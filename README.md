@@ -65,7 +65,7 @@ Everything works through **natural language** — just say what you want.
 ## 🏗️ How it works
 
 ```
-Telegram ──polling/webhook──▶ FastAPI ──▶ Intent classifier (LLM)
+Telegram ──polling/webhook──▶ FastAPI ──▶ Single-agent harness (LLM)
                                       │
         ┌─────────────┬──────────────┼───────────────┬──────────────┐
      memory         notes          files          reminders      chat
@@ -80,6 +80,17 @@ Telegram ──polling/webhook──▶ FastAPI ──▶ Intent classifier (LLM
 - **Database:** PostgreSQL 16 + pgvector
 - **Scheduler:** lightweight asyncio poller (reminders survive restarts)
 - **i18n:** all user-facing text in JSON locale files (`pocketmemo/locales/`)
+
+### Agent harness
+
+Natural-language text is handled by a bounded, provider-agnostic agent loop. The
+model can answer directly or select an allowlisted PocketMemo tool for memories,
+notes, files, or reminders. The harness enforces a maximum number of steps, tool
+timeouts, argument validation, duplicate-call protection, and safe fallback to the
+legacy intent router. It deliberately exposes no shell or arbitrary-code tool.
+
+The JSON decision protocol works across Gemini, OpenAI-compatible backends, and
+Ollama without tying PocketMemo to one provider's function-calling API.
 
 ## 🚀 Quick start
 
@@ -149,6 +160,9 @@ All settings live in `.env` (see [`.env.example`](.env.example) for the full lis
 | `DEFAULT_LANGUAGE` | `en` or `id` for new users |
 | `ALLOWED_USER_IDS` | Comma-separated Telegram IDs (empty = open to all) |
 | `LLM_PROVIDER` | `gemini`, `openai`, or `ollama` |
+| `AGENT_ENABLED` | Enable the single-agent tool loop (default `true`) |
+| `AGENT_MAX_STEPS` | Maximum planning/tool steps per message (default `4`) |
+| `AGENT_TOOL_TIMEOUT_SECONDS` | Timeout for each tool execution (default `45`) |
 
 ### Choosing your LLM
 
