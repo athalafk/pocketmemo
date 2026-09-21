@@ -18,6 +18,8 @@ from telegram.ext import (
 )
 
 from pocketmemo import settings_store
+from pocketmemo.agent import AgentContext
+from pocketmemo.agent.runtime import pocketmemo_agent
 from pocketmemo.config import get_settings
 from pocketmemo.database import SessionLocal
 from pocketmemo.i18n import language_directive, t
@@ -736,6 +738,65 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         llm.reconfigure()
         await update.message.reply_text(reply)
         return
+
+    # The agent is the primary natural-language path. It chooses from a fixed
+    # allowlist of PocketMemo tools and is bounded by max steps + tool timeouts.
+    # If planning is invalid repeatedly, fall through to the proven legacy
+    # intent router below so an LLM formatting issue does not break the bot.
+    if _settings.agent_enabled:
+        try:
+            history = await conversation.get_recent_history(user.id)
+            agent_result = await pocketmemo_agent.run(
+                message=text,
+                history=history,
+                language=lang,
+                context=AgentContext(
+                    user=user,
+                    update=update,
+                    telegram_context=context,
+                ),
+            )
+        except ResourceExhausted:
+            await update.message.reply_text(t("quota_exceeded", lang))
+            return
+        except Exception:
+            logger.exception("Agent harness failed for user %s; using legacy router", user.id)
+        else:
+            if agent_result.handled:
+                needs_time = bool(agent_result.metadata.get("reminder_needs_time"))
+                reminder_id = agent_result.metadata.get("reminder_id")
+                if needs_time and context.user_data is not None:
+                    context.user_data["reminder_draft"] = agent_result.metadata.get(
+                        "reminder_request", text
+                    )
+
+                reply_markup = None
+                if reminder_id:
+                    reply_markup = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton(
+                                    t("reminder_btn_addloc", lang),
+                                    callback_data=f"raddloc:{reminder_id}",
+                                ),
+                                InlineKeyboardButton(
+                                    t("reminder_btn_addlink", lang),
+                                    callback_data=f"raddlink:{reminder_id}",
+                                ),
+                            ]
+                        ]
+                    )
+
+                if agent_result.reply:
+                    if not needs_time:
+                        await conversation.save_turn(user.id, "user", text)
+                        await conversation.save_turn(
+                            user.id, "assistant", agent_result.reply
+                        )
+                    await update.message.reply_text(
+                        agent_result.reply, reply_markup=reply_markup
+                    )
+                return
 
     result = await llm.classify_intent(text)
     intent = result["intent"]

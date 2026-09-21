@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     max_file_size_mb: int = 50
 
+    # Single-agent harness. Disable to use the legacy intent router only.
+    agent_enabled: bool = True
+    agent_max_steps: int = 4
+    agent_tool_timeout_seconds: float = 45.0
+
     # Access control: comma-separated Telegram user IDs (empty = open to all).
     allowed_user_ids: str = ""
 
