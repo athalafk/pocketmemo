@@ -144,7 +144,7 @@
   "memory_list_header": "💾 Your saved facts:",
   "memory_list_empty": "You haven't saved any facts yet. Just tell me something to remember.",
   "memory_not_found": "I couldn't find memory #{id}.",
-  "memory_deleted": "Memory #{id} deleted 🗑️",
+  "memory_deleted": "Memory #{id} deleted 🗑️ Earlier conversation context was also disconnected so I won't remember it from chat history.",
   "llm_choose_model": "Pick a model:",
   "llm_btn_type_model": "⌨️ Type manually"
 }

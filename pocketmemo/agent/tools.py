@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pocketmemo.agent.core import AgentContext, AgentTool, ToolInputError, ToolResult
@@ -30,8 +31,17 @@ async def _save_memory(ctx: AgentContext, arguments: dict[str, Any]) -> ToolResu
 
 
 async def _recall_memory(ctx: AgentContext, arguments: dict[str, Any]) -> ToolResult:
-    reply = await memory.recall_memory(ctx.user, _required_text(arguments, "query"))
-    return ToolResult(observation=reply, direct=True, reply=reply)
+    query = _required_text(arguments, "query")
+    rows = await memory.search_memories(ctx.user, query)
+    observation = json.dumps(
+        {
+            "source": "saved_memories",
+            "query": query,
+            "facts": [row.content for row in rows],
+        },
+        ensure_ascii=False,
+    )
+    return ToolResult(observation=observation)
 
 
 async def _save_note(ctx: AgentContext, arguments: dict[str, Any]) -> ToolResult:
@@ -95,8 +105,15 @@ async def _create_reminder(ctx: AgentContext, arguments: dict[str, Any]) -> Tool
 
 
 async def _list_reminders(ctx: AgentContext, arguments: dict[str, Any]) -> ToolResult:
-    reply = await reminder.list_reminders(ctx.user)
-    return ToolResult(observation=reply, direct=True, reply=reply)
+    rows = await reminder.get_active_reminders(ctx.user)
+    observation = json.dumps(
+        {
+            "source": "active_reminders",
+            "items": [reminder.format_reminder_line(row, ctx.user) for row in rows],
+        },
+        ensure_ascii=False,
+    )
+    return ToolResult(observation=observation)
 
 
 async def _update_reminder(ctx: AgentContext, arguments: dict[str, Any]) -> ToolResult:
@@ -116,7 +133,12 @@ def build_tools() -> dict[str, AgentTool]:
         ),
         AgentTool(
             name="recall_memory",
-            description="Recall or answer from personal facts previously saved by the user.",
+            description=(
+                "Search short personal facts previously saved by the user, including "
+                "codes, passwords, identifiers, locations, preferences, and anything "
+                "they asked to remember. Use returned facts as context and never invent "
+                "missing information."
+            ),
             parameters=_object_schema({"query": text}, ["query"]),
             execute=_recall_memory,
         ),
@@ -128,7 +150,11 @@ def build_tools() -> dict[str, AgentTool]:
         ),
         AgentTool(
             name="recall_note",
-            description="Find and show one previously saved note by title or topic.",
+            description=(
+                "Find and show a longer saved note when the user explicitly refers to a "
+                "note/catatan, its title, or a document topic. Never use this for a short "
+                "fact, password, identifier, or code."
+            ),
             parameters=_object_schema({"query": text}, ["query"]),
             execute=_recall_note,
         ),
@@ -158,7 +184,10 @@ def build_tools() -> dict[str, AgentTool]:
         ),
         AgentTool(
             name="list_reminders",
-            description="List the user's active reminders.",
+            description=(
+                "Fetch the user's active reminders as context. It may be combined with "
+                "other tools before producing the final answer."
+            ),
             parameters=_object_schema({}),
             execute=_list_reminders,
         ),

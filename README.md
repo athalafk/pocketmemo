@@ -89,6 +89,15 @@ notes, files, or reminders. The harness enforces a maximum number of steps, tool
 timeouts, argument validation, duplicate-call protection, and safe fallback to the
 legacy intent router. It deliberately exposes no shell or arbitrary-code tool.
 
+Read-only context tools can return observations to the agent instead of replying
+immediately. The agent can then call another tool and synthesize one answer from
+multiple sources—for example, combining saved memories with active reminders.
+
+Conversation history is treated only as short-term dialogue context. Once a
+retrieval tool runs, its observation becomes authoritative and prior chat turns are
+removed from subsequent reasoning steps. Deleting a saved memory also creates a
+context cutoff, so earlier turns cannot reintroduce that deleted fact.
+
 The JSON decision protocol works across Gemini, OpenAI-compatible backends, and
 Ollama without tying PocketMemo to one provider's function-calling API.
 
@@ -161,7 +170,7 @@ All settings live in `.env` (see [`.env.example`](.env.example) for the full lis
 | `ALLOWED_USER_IDS` | Comma-separated Telegram IDs (empty = open to all) |
 | `LLM_PROVIDER` | `gemini`, `openai`, or `ollama` |
 | `AGENT_ENABLED` | Enable the single-agent tool loop (default `true`) |
-| `AGENT_MAX_STEPS` | Maximum planning/tool steps per message (default `4`) |
+| `AGENT_MAX_STEPS` | Maximum planning/tool steps per message (default `6`) |
 | `AGENT_TOOL_TIMEOUT_SECONDS` | Timeout for each tool execution (default `45`) |
 
 ### Choosing your LLM

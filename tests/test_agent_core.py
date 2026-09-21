@@ -87,6 +87,88 @@ class AgentRunnerTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.tool_calls, ("lookup",))
         self.assertIn("abc123", prompts[1])
 
+    async def test_history_is_removed_after_tool_phase_starts(self) -> None:
+        decisions = iter(
+            [
+                {"type": "tool", "tool": "lookup", "arguments": {"query": "code"}},
+                {"type": "final", "answer": "Kode itu tidak tersimpan."},
+            ]
+        )
+        prompts: list[str] = []
+
+        async def planner(prompt: str, system: str) -> dict:
+            prompts.append(prompt)
+            return next(decisions)
+
+        async def execute(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation='{"facts": []}')
+
+        tool = AgentTool(
+            name="lookup",
+            description="Retrieve authoritative saved facts",
+            parameters={"type": "object"},
+            execute=execute,
+        )
+        runner = AgentRunner(planner=planner, tools={tool.name: tool})
+        result = await runner.run(
+            message="Apa kode saya?",
+            history=[{"role": "assistant", "content": "Kode lama Anda adalah STALE-SECRET"}],
+            language="id",
+            context=_context(),
+        )
+
+        self.assertTrue(result.handled)
+        self.assertIn("STALE-SECRET", prompts[0])
+        self.assertNotIn("STALE-SECRET", prompts[1])
+        self.assertIn('\\"facts\\": []', prompts[1])
+
+    async def test_agent_can_chain_multiple_context_tools(self) -> None:
+        decisions = iter(
+            [
+                {"type": "tool", "tool": "memories", "arguments": {}},
+                {"type": "tool", "tool": "reminders", "arguments": {}},
+                {"type": "final", "answer": "Prioritaskan laporan yang jatuh tempo besok."},
+            ]
+        )
+        prompts: list[str] = []
+
+        async def planner(prompt: str, system: str) -> dict:
+            prompts.append(prompt)
+            return next(decisions)
+
+        async def memories(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation="Kuliah membutuhkan laporan akhir")
+
+        async def reminders(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation="Laporan jatuh tempo besok")
+
+        tools = {
+            "memories": AgentTool(
+                name="memories",
+                description="Get memory context",
+                parameters={"type": "object"},
+                execute=memories,
+            ),
+            "reminders": AgentTool(
+                name="reminders",
+                description="Get reminder context",
+                parameters={"type": "object"},
+                execute=reminders,
+            ),
+        }
+        runner = AgentRunner(planner=planner, tools=tools)
+        result = await runner.run(
+            message="Apa prioritas saya berdasarkan memori kuliah dan reminder?",
+            history=[],
+            language="id",
+            context=_context(),
+        )
+
+        self.assertTrue(result.handled)
+        self.assertEqual(result.tool_calls, ("memories", "reminders"))
+        self.assertIn("laporan akhir", prompts[1])
+        self.assertIn("jatuh tempo besok", prompts[2])
+
     async def test_agent_falls_back_after_invalid_decisions(self) -> None:
         async def planner(prompt: str, system: str) -> dict:
             return {"unexpected": True}
@@ -96,3 +178,53 @@ class AgentRunnerTests(IsolatedAsyncioTestCase):
 
         self.assertFalse(result.handled)
         self.assertEqual(result.fallback_reason, "max_steps_exhausted")
+
+    async def test_tool_observations_use_safe_finalizer_after_max_steps(self) -> None:
+        decisions = iter(
+            [
+                {"type": "tool", "tool": "memories", "arguments": {}},
+                {"type": "tool", "tool": "reminders", "arguments": {}},
+                {
+                    "type": "final",
+                    "answer": "Tidak ada memory yang cocok; reminder aktif: kuliah besok.",
+                },
+            ]
+        )
+        systems: list[str] = []
+
+        async def planner(prompt: str, system: str) -> dict:
+            systems.append(system)
+            return next(decisions)
+
+        async def memories(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation='{"source":"saved_memories","facts":[]}')
+
+        async def reminders(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation='{"source":"active_reminders","items":["kuliah besok"]}')
+
+        tools = {
+            "memories": AgentTool(
+                name="memories",
+                description="Get memory context",
+                parameters={"type": "object"},
+                execute=memories,
+            ),
+            "reminders": AgentTool(
+                name="reminders",
+                description="Get reminder context",
+                parameters={"type": "object"},
+                execute=reminders,
+            ),
+        }
+        runner = AgentRunner(planner=planner, tools=tools, max_steps=2)
+        result = await runner.run(
+            message="Ringkas memory dan reminder saya.",
+            history=[],
+            language="id",
+            context=_context(),
+        )
+
+        self.assertTrue(result.handled)
+        self.assertEqual(result.tool_calls, ("memories", "reminders"))
+        self.assertIn("Tidak ada memory", result.reply or "")
+        self.assertIn("safe final-answer generator", systems[-1])

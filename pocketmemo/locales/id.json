@@ -144,7 +144,7 @@
   "memory_list_header": "💾 Fakta tersimpan:",
   "memory_list_empty": "Kamu belum menyimpan fakta apa pun. Beri tahu aku sesuatu untuk diingat.",
   "memory_not_found": "Nggak nemu memory #{id}.",
-  "memory_deleted": "Memory #{id} dihapus 🗑️",
+  "memory_deleted": "Memory #{id} dihapus 🗑️ Konteks percakapan sebelumnya juga diputus supaya aku tidak mengingatnya kembali dari riwayat chat.",
   "llm_choose_model": "Pilih model:",
   "llm_btn_type_model": "⌨️ Ketik manual"
 }

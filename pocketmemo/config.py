@@ -71,7 +71,7 @@ class Settings(BaseSettings):
 
     # Single-agent harness. Disable to use the legacy intent router only.
     agent_enabled: bool = True
-    agent_max_steps: int = 4
+    agent_max_steps: int = 6
     agent_tool_timeout_seconds: float = 45.0
 
     # Access control: comma-separated Telegram user IDs (empty = open to all).
