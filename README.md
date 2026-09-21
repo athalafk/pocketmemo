@@ -170,7 +170,7 @@ All settings live in `.env` (see [`.env.example`](.env.example) for the full lis
 | `ALLOWED_USER_IDS` | Comma-separated Telegram IDs (empty = open to all) |
 | `LLM_PROVIDER` | `gemini`, `openai`, or `ollama` |
 | `AGENT_ENABLED` | Enable the single-agent tool loop (default `true`) |
-| `AGENT_MAX_STEPS` | Maximum planning/tool steps per message (default `4`) |
+| `AGENT_MAX_STEPS` | Maximum planning/tool steps per message (default `6`) |
 | `AGENT_TOOL_TIMEOUT_SECONDS` | Timeout for each tool execution (default `45`) |
 
 ### Choosing your LLM

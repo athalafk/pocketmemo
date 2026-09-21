@@ -78,6 +78,12 @@ You may answer normally or use one of the tools supplied in the user prompt.
 Rules:
 - Use tools whenever the request reads, saves, or changes the user's memories,
   notes, files, or reminders. Never invent stored personal data.
+- Use recall_memory for short personal facts, codes, passwords, identifiers,
+  locations, preferences, or anything the user previously asked you to remember.
+- Use recall_note only when the user explicitly asks for a note/catatan, note
+  title, or longer document. The word "code" or "kode" alone does not mean note.
+- When the request needs multiple persistent sources, gather every required tool
+  observation before producing the final answer.
 - Choose only a listed tool and provide only its documented arguments.
 - Conversation history is only for resolving dialogue references. It is never
   authoritative evidence for saved memories, notes, files, or reminders.
@@ -96,6 +102,21 @@ Return exactly one JSON object and no markdown:
 - Final answer: {"type":"final","answer":"your response"}
 """
 
+_FINALIZE_SYSTEM_PROMPT = """You are PocketMemo's safe final-answer generator.
+Return exactly one JSON object and no markdown:
+{"type":"final","answer":"your response"}
+
+Rules:
+- Produce a concise answer to user_message using ONLY successful tool observations
+  in previous_steps. Do not use conversation history or outside knowledge.
+- Never call a tool and never invent a memory, note, file, reminder, deadline, or task.
+- If an observation contains an empty result, clearly say that no matching saved
+  data was found for that source.
+- If other observations contain data, summarize that data normally even when one
+  source is empty.
+- Respond in the requested language.
+"""
+
 
 class AgentRunner:
     """Bounded tool loop with timeout, validation, logging, and safe fallback."""
@@ -105,7 +126,7 @@ class AgentRunner:
         *,
         planner: Planner,
         tools: Mapping[str, AgentTool],
-        max_steps: int = 4,
+        max_steps: int = 6,
         tool_timeout_seconds: float = 45.0,
     ) -> None:
         if max_steps < 1:
@@ -265,6 +286,50 @@ class AgentRunner:
             getattr(context.user, "id", "unknown"),
             calls,
         )
+
+        # Once the agent has touched persistent data, never hand the request to
+        # the legacy free-form router. That path cannot see tool observations and
+        # may fabricate an answer. Give the model one tool-free synthesis pass;
+        # if it still fails, return a deterministic safe message.
+        if calls:
+            final_prompt = self._build_prompt(
+                message=message,
+                history=[],
+                language=language,
+                scratchpad=scratchpad,
+            )
+            try:
+                decision = await self._planner(final_prompt, _FINALIZE_SYSTEM_PROMPT)
+                if isinstance(decision, dict) and decision.get("type") == "final":
+                    answer = str(decision.get("answer") or "").strip()
+                    if answer:
+                        logger.info(
+                            "Agent finalized safely after max steps user=%s calls=%s",
+                            getattr(context.user, "id", "unknown"),
+                            calls,
+                        )
+                        return AgentResult(
+                            handled=True,
+                            reply=answer,
+                            tool_calls=tuple(calls),
+                        )
+            except Exception:
+                logger.exception("Agent safe finalization failed")
+
+            safe_reply = (
+                "Maaf, aku belum bisa menyelesaikan permintaan itu dari data yang "
+                "tersimpan. Coba ulangi dengan lebih spesifik."
+                if language == "id"
+                else "Sorry, I couldn't complete that request from your saved data. "
+                "Please try again with a more specific request."
+            )
+            return AgentResult(
+                handled=True,
+                reply=safe_reply,
+                tool_calls=tuple(calls),
+                fallback_reason="safe_finalization_failed",
+            )
+
         return AgentResult(
             handled=False,
             tool_calls=tuple(calls),

@@ -134,8 +134,10 @@ def build_tools() -> dict[str, AgentTool]:
         AgentTool(
             name="recall_memory",
             description=(
-                "Search personal facts previously saved by the user. Use the returned "
-                "facts as context, then answer without inventing missing information."
+                "Search short personal facts previously saved by the user, including "
+                "codes, passwords, identifiers, locations, preferences, and anything "
+                "they asked to remember. Use returned facts as context and never invent "
+                "missing information."
             ),
             parameters=_object_schema({"query": text}, ["query"]),
             execute=_recall_memory,
@@ -148,7 +150,11 @@ def build_tools() -> dict[str, AgentTool]:
         ),
         AgentTool(
             name="recall_note",
-            description="Find and show one previously saved note by title or topic.",
+            description=(
+                "Find and show a longer saved note when the user explicitly refers to a "
+                "note/catatan, its title, or a document topic. Never use this for a short "
+                "fact, password, identifier, or code."
+            ),
             parameters=_object_schema({"query": text}, ["query"]),
             execute=_recall_note,
         ),

@@ -178,3 +178,53 @@ class AgentRunnerTests(IsolatedAsyncioTestCase):
 
         self.assertFalse(result.handled)
         self.assertEqual(result.fallback_reason, "max_steps_exhausted")
+
+    async def test_tool_observations_use_safe_finalizer_after_max_steps(self) -> None:
+        decisions = iter(
+            [
+                {"type": "tool", "tool": "memories", "arguments": {}},
+                {"type": "tool", "tool": "reminders", "arguments": {}},
+                {
+                    "type": "final",
+                    "answer": "Tidak ada memory yang cocok; reminder aktif: kuliah besok.",
+                },
+            ]
+        )
+        systems: list[str] = []
+
+        async def planner(prompt: str, system: str) -> dict:
+            systems.append(system)
+            return next(decisions)
+
+        async def memories(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation='{"source":"saved_memories","facts":[]}')
+
+        async def reminders(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation='{"source":"active_reminders","items":["kuliah besok"]}')
+
+        tools = {
+            "memories": AgentTool(
+                name="memories",
+                description="Get memory context",
+                parameters={"type": "object"},
+                execute=memories,
+            ),
+            "reminders": AgentTool(
+                name="reminders",
+                description="Get reminder context",
+                parameters={"type": "object"},
+                execute=reminders,
+            ),
+        }
+        runner = AgentRunner(planner=planner, tools=tools, max_steps=2)
+        result = await runner.run(
+            message="Ringkas memory dan reminder saya.",
+            history=[],
+            language="id",
+            context=_context(),
+        )
+
+        self.assertTrue(result.handled)
+        self.assertEqual(result.tool_calls, ("memories", "reminders"))
+        self.assertIn("Tidak ada memory", result.reply or "")
+        self.assertIn("safe final-answer generator", systems[-1])

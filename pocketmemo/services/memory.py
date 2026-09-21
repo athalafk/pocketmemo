@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 # How many nearest facts to feed the LLM as context.
 RECALL_TOP_K = 5
 
+# Reject unrelated nearest neighbours. Without a distance ceiling, pgvector
+# always returns something whenever the user has any saved memory.
+RECALL_MAX_DISTANCE = 0.75
+
 # Only consider superseding an existing fact if it is at least this similar.
 SUPERSEDE_MAX_DISTANCE = 0.45
 
@@ -144,10 +148,16 @@ async def search_memories(user: User, query: str, limit: int = RECALL_TOP_K) -> 
 
     query_embedding = await llm.embed_query(query)
     async with SessionLocal() as session:
+        distance = Memory.embedding.cosine_distance(query_embedding).label("distance")
         stmt = (
-            select(Memory)
-            .where(Memory.user_id == user.id, Memory.embedding.is_not(None))
-            .order_by(Memory.embedding.cosine_distance(query_embedding))
+            select(Memory, distance)
+            .where(
+                Memory.user_id == user.id,
+                Memory.embedding.is_not(None),
+                distance <= RECALL_MAX_DISTANCE,
+            )
+            .order_by(distance)
             .limit(limit)
         )
-        return list((await session.execute(stmt)).scalars().all())
+        rows = (await session.execute(stmt)).all()
+        return [row[0] for row in rows]
