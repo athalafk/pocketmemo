@@ -11,7 +11,11 @@ from pocketmemo.llm import llm
 
 
 async def _planner(prompt: str, system_prompt: str) -> dict[str, Any]:
-    return await llm.complete_json(prompt, system_prompt=system_prompt)
+    return await llm.complete_json(
+        prompt,
+        system_prompt=system_prompt,
+        accept_first_object_from_list=True,
+    )
 
 
 _settings = get_settings()

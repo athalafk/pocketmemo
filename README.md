@@ -112,7 +112,8 @@ docker compose exec -T bot python -m pocketmemo.agent.eval
 The evaluator loads the same provider configuration as the bot, but replaces all
 PocketMemo tools with simulations. It does not read or write personal memories,
 notes, files, or reminders. It does make real LLM API calls, so provider usage and
-rate limits still apply.
+rate limits still apply. By default it spaces requests 4.1 seconds apart to remain
+within a 15-requests-per-minute free-tier limit and retries transient quota errors.
 
 Use `--list` to see the cases or run one case while tuning a prompt/model:
 
@@ -121,6 +122,9 @@ docker compose exec -T bot python -m pocketmemo.agent.eval --list
 docker compose exec -T bot python -m pocketmemo.agent.eval \
   --case multi_tool_memory_reminder
 ```
+
+Paid or local providers with higher limits can disable pacing with
+`--request-interval 0`.
 
 `PASS` means routing, grounding, and the planner-call target all passed. `SLOW`
 means the answer was correct but used more planner calls than its target. `FAIL`

@@ -157,7 +157,11 @@ class LLMService:
         )
 
     async def complete_json(
-        self, prompt: str, system_prompt: str | None = None
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        *,
+        accept_first_object_from_list: bool = False,
     ) -> dict[str, Any]:
         """Generate a JSON response and parse it. Returns {} on parse error."""
         try:
@@ -165,7 +169,24 @@ class LLMService:
                 [prompt], system_instruction=system_prompt, json_mode=True
             )
             data = json.loads(raw)
-            return data if isinstance(data, dict) else {}
+            if isinstance(data, dict):
+                return data
+            if (
+                accept_first_object_from_list
+                and isinstance(data, list)
+                and data
+                and isinstance(data[0], dict)
+            ):
+                logger.warning(
+                    "JSON completion returned a list of %d items; using the first object",
+                    len(data),
+                )
+                return data[0]
+            logger.warning(
+                "JSON completion returned non-object type=%s",
+                type(data).__name__,
+            )
+            return {}
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning("Failed to parse JSON completion: %s", e)
             return {}

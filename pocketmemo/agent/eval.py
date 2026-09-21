@@ -57,6 +57,21 @@ class EvalOutcome:
     elapsed_seconds: float
 
 
+class RequestPacer:
+    """Keep live eval requests below common free-tier per-minute limits."""
+
+    def __init__(self, minimum_interval_seconds: float) -> None:
+        self._minimum_interval_seconds = max(0.0, minimum_interval_seconds)
+        self._last_request_started = 0.0
+
+    async def wait(self) -> None:
+        elapsed = time.monotonic() - self._last_request_started
+        delay = self._minimum_interval_seconds - elapsed
+        if delay > 0:
+            await asyncio.sleep(delay)
+        self._last_request_started = time.monotonic()
+
+
 def _memory_observation(*facts: str) -> str:
     return json.dumps(
         {"source": "saved_memories", "query": "simulated", "facts": list(facts)},
@@ -219,14 +234,42 @@ def _simulated_tools(case: EvalCase) -> dict[str, AgentTool]:
     return simulated
 
 
-async def _run_case(case: EvalCase) -> tuple[AgentResult, EvalOutcome]:
+def _is_quota_error(exc: Exception) -> bool:
+    message = str(exc).casefold()
+    return type(exc).__name__ == "ResourceExhausted" or ("429" in message and "quota" in message)
+
+
+async def _run_case(
+    case: EvalCase,
+    *,
+    pacer: RequestPacer,
+    quota_retries: int,
+    quota_retry_delay: float,
+) -> tuple[AgentResult, EvalOutcome]:
     settings = get_settings()
     planner_calls = 0
 
     async def planner(prompt: str, system_prompt: str) -> dict:
         nonlocal planner_calls
         planner_calls += 1
-        return await llm.complete_json(prompt, system_prompt=system_prompt)
+        for attempt in range(quota_retries + 1):
+            await pacer.wait()
+            try:
+                return await llm.complete_json(
+                    prompt,
+                    system_prompt=system_prompt,
+                    accept_first_object_from_list=True,
+                )
+            except Exception as exc:
+                if not _is_quota_error(exc) or attempt >= quota_retries:
+                    raise
+                delay = quota_retry_delay * (attempt + 1)
+                print(
+                    f"       quota retry {attempt + 1}/{quota_retries} in {delay:.0f}s",
+                    flush=True,
+                )
+                await asyncio.sleep(delay)
+        return {}
 
     runner = AgentRunner(
         planner=planner,
@@ -260,7 +303,13 @@ def _preview(text: str | None, limit: int = 180) -> str:
     return compact if len(compact) <= limit else compact[: limit - 1] + "…"
 
 
-async def run_evaluation(cases: Sequence[EvalCase]) -> int:
+async def run_evaluation(
+    cases: Sequence[EvalCase],
+    *,
+    request_interval: float = 4.1,
+    quota_retries: int = 2,
+    quota_retry_delay: float = 10.0,
+) -> int:
     try:
         await settings_store.load_settings()
         llm.reconfigure()
@@ -269,17 +318,30 @@ async def run_evaluation(cases: Sequence[EvalCase]) -> int:
         print(f"SETUP ERROR: {type(exc).__name__}: {exc}")
         return 2
 
-    print("PocketMemo live agent evaluation")
-    print(f"Provider: {provider}")
-    print("Safety: simulated tools only; no personal data is read or written.\n")
+    print("PocketMemo live agent evaluation", flush=True)
+    print(f"Provider: {provider}", flush=True)
+    print(
+        "Safety: simulated tools only; no personal data is read or written.",
+        flush=True,
+    )
+    print(f"Request interval: {request_interval:.1f}s\n", flush=True)
 
     outcomes: list[EvalOutcome] = []
+    errors = 0
+    pacer = RequestPacer(request_interval)
     for case in cases:
+        print(f"[RUN ] {case.name}", flush=True)
         try:
-            result, outcome = await _run_case(case)
+            result, outcome = await _run_case(
+                case,
+                pacer=pacer,
+                quota_retries=quota_retries,
+                quota_retry_delay=quota_retry_delay,
+            )
         except Exception as exc:
-            print(f"[FAIL] {case.name}")
-            print(f"       error={type(exc).__name__}: {exc}")
+            errors += 1
+            print(f"[ERROR] {case.name}")
+            print(f"        error={type(exc).__name__}: {exc}")
             continue
 
         outcomes.append(outcome)
@@ -304,9 +366,13 @@ async def run_evaluation(cases: Sequence[EvalCase]) -> int:
         sum(outcome.planner_calls for outcome in outcomes) / len(outcomes) if outcomes else 0
     )
     print("\nSummary")
+    print(f"Evaluated: {len(outcomes)}/{total}")
     print(f"Correct: {correct}/{total}")
     print(f"Efficient: {efficient}/{total}")
+    print(f"Errors: {errors}")
     print(f"Average planner calls: {average_calls:.2f}")
+    if errors:
+        return 2
     return 0 if correct == total else 1
 
 
@@ -320,6 +386,24 @@ def _parse_args() -> argparse.Namespace:
         help="Run only this case; repeat the option to select multiple cases.",
     )
     parser.add_argument("--list", action="store_true", help="List available cases and exit.")
+    parser.add_argument(
+        "--request-interval",
+        type=float,
+        default=4.1,
+        help="Minimum seconds between LLM requests (default: 4.1 for 15 RPM).",
+    )
+    parser.add_argument(
+        "--quota-retries",
+        type=int,
+        default=2,
+        help="Retries for an LLM quota/rate-limit error (default: 2).",
+    )
+    parser.add_argument(
+        "--quota-retry-delay",
+        type=float,
+        default=10.0,
+        help="Base seconds before a quota retry (default: 10).",
+    )
     args = parser.parse_args()
     args.available_cases = available
     return args
@@ -333,7 +417,16 @@ def main() -> None:
             print(name)
         return
     selected = [available[name] for name in args.case] if args.case else list(available.values())
-    raise SystemExit(asyncio.run(run_evaluation(selected)))
+    raise SystemExit(
+        asyncio.run(
+            run_evaluation(
+                selected,
+                request_interval=max(0.0, args.request_interval),
+                quota_retries=max(0, args.quota_retries),
+                quota_retry_delay=max(0.0, args.quota_retry_delay),
+            )
+        )
+    )
 
 
 if __name__ == "__main__":
