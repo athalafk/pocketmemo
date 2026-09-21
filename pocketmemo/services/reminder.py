@@ -259,6 +259,45 @@ async def get_active_reminders(user: User) -> list[Reminder]:
         return list((await session.execute(stmt)).scalars().all())
 
 
+def reminder_agent_data(rem: Reminder, user: User) -> dict:
+    """Return explicit event and notification times for agent reasoning.
+
+    ``remind_at`` is the notification time. Adding ``lead_minutes`` reconstructs
+    the event time. Keeping both fields separate prevents an early notification
+    from being presented as the actual class, meeting, or event schedule.
+    """
+    tz = _user_tz(user)
+    notification_local = rem.remind_at.astimezone(tz)
+    event_local = tz.normalize(notification_local + timedelta(minutes=rem.lead_minutes))
+
+    recurrence = None
+    if rem.is_recurring and rem.recurrence_rule:
+        rule = json.loads(rem.recurrence_rule)
+        days = rule.get("days", [])
+        recurrence = {
+            "weekdays": days,
+            "weekday_names": [
+                WEEKDAYS.get(user.language, WEEKDAYS["en"])[day]
+                for day in days
+                if isinstance(day, int) and 0 <= day <= 6
+            ],
+            "event_time": rule.get("time"),
+        }
+
+    return {
+        "id": rem.id,
+        "message": rem.message,
+        "schedule_type": "recurring" if rem.is_recurring else "one_time",
+        "event_at": event_local.isoformat(timespec="minutes"),
+        "notification_at": notification_local.isoformat(timespec="minutes"),
+        "lead_minutes": rem.lead_minutes,
+        "timezone": str(tz),
+        "recurrence": recurrence,
+        "location": rem.location,
+        "link": rem.link,
+    }
+
+
 def format_reminder_line(rem: Reminder, user: User) -> str:
     """One compact line for /list."""
     lang = user.language
