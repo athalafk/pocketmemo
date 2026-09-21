@@ -10,6 +10,7 @@ from pocketmemo.database import SessionLocal
 from pocketmemo.i18n import language_directive, t
 from pocketmemo.llm import llm
 from pocketmemo.models import Memory, User
+from pocketmemo.services.conversation import mark_context_cutoff
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,7 @@ async def delete_memory(user: User, memory_id: int) -> str:
             return t("memory_not_found", user.language, id=memory_id)
         await session.delete(m)
         await session.commit()
+    await mark_context_cutoff(user.id)
     logger.info("Deleted memory %s for user %s", memory_id, user.id)
     return t("memory_deleted", user.language, id=memory_id)
 

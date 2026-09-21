@@ -13,7 +13,8 @@ class Conversation(Base, TimestampMixin):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    role: Mapped[str] = mapped_column(String(16), nullable=False)  # 'user' | 'assistant'
+    # 'user' | 'assistant' | 'system' (internal context-cutoff marker)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
     def __repr__(self) -> str:

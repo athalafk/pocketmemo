@@ -87,6 +87,41 @@ class AgentRunnerTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.tool_calls, ("lookup",))
         self.assertIn("abc123", prompts[1])
 
+    async def test_history_is_removed_after_tool_phase_starts(self) -> None:
+        decisions = iter(
+            [
+                {"type": "tool", "tool": "lookup", "arguments": {"query": "code"}},
+                {"type": "final", "answer": "Kode itu tidak tersimpan."},
+            ]
+        )
+        prompts: list[str] = []
+
+        async def planner(prompt: str, system: str) -> dict:
+            prompts.append(prompt)
+            return next(decisions)
+
+        async def execute(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation='{"facts": []}')
+
+        tool = AgentTool(
+            name="lookup",
+            description="Retrieve authoritative saved facts",
+            parameters={"type": "object"},
+            execute=execute,
+        )
+        runner = AgentRunner(planner=planner, tools={tool.name: tool})
+        result = await runner.run(
+            message="Apa kode saya?",
+            history=[{"role": "assistant", "content": "Kode lama Anda adalah STALE-SECRET"}],
+            language="id",
+            context=_context(),
+        )
+
+        self.assertTrue(result.handled)
+        self.assertIn("STALE-SECRET", prompts[0])
+        self.assertNotIn("STALE-SECRET", prompts[1])
+        self.assertIn('\\"facts\\": []', prompts[1])
+
     async def test_agent_can_chain_multiple_context_tools(self) -> None:
         decisions = iter(
             [

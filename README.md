@@ -93,6 +93,11 @@ Read-only context tools can return observations to the agent instead of replying
 immediately. The agent can then call another tool and synthesize one answer from
 multiple sources—for example, combining saved memories with active reminders.
 
+Conversation history is treated only as short-term dialogue context. Once a
+retrieval tool runs, its observation becomes authoritative and prior chat turns are
+removed from subsequent reasoning steps. Deleting a saved memory also creates a
+context cutoff, so earlier turns cannot reintroduce that deleted fact.
+
 The JSON decision protocol works across Gemini, OpenAI-compatible backends, and
 Ollama without tying PocketMemo to one provider's function-calling API.
 
