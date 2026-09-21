@@ -101,6 +101,32 @@ context cutoff, so earlier turns cannot reintroduce that deleted fact.
 The JSON decision protocol works across Gemini, OpenAI-compatible backends, and
 Ollama without tying PocketMemo to one provider's function-calling API.
 
+### Agent evaluation
+
+Run the live evaluation suite against the currently configured LLM:
+
+```bash
+docker compose exec -T bot python -m pocketmemo.agent.eval
+```
+
+The evaluator loads the same provider configuration as the bot, but replaces all
+PocketMemo tools with simulations. It does not read or write personal memories,
+notes, files, or reminders. It does make real LLM API calls, so provider usage and
+rate limits still apply.
+
+Use `--list` to see the cases or run one case while tuning a prompt/model:
+
+```bash
+docker compose exec -T bot python -m pocketmemo.agent.eval --list
+docker compose exec -T bot python -m pocketmemo.agent.eval \
+  --case multi_tool_memory_reminder
+```
+
+`PASS` means routing, grounding, and the planner-call target all passed. `SLOW`
+means the answer was correct but used more planner calls than its target. `FAIL`
+means tool selection or grounded-content checks failed. The process exits nonzero
+when any correctness check fails, making it suitable for CI.
+
 ## 🚀 Quick start
 
 **Requirements:** Docker + Docker Compose, a Telegram bot token, and an LLM API key.

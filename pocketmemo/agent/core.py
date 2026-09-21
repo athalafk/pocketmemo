@@ -144,6 +144,22 @@ class AgentRunner:
         self._max_steps = max_steps
         self._tool_timeout_seconds = tool_timeout_seconds
 
+    @staticmethod
+    def _log_rejected_decision(
+        context: AgentContext,
+        step: int,
+        reason: str,
+        tool_name: str | None = None,
+    ) -> None:
+        """Log planner failures without prompts, arguments, or personal data."""
+        logger.warning(
+            "Agent decision rejected user=%s step=%s reason=%s tool=%s",
+            getattr(context.user, "id", "unknown"),
+            step,
+            reason,
+            tool_name or "-",
+        )
+
     def _build_prompt(
         self,
         *,
@@ -193,15 +209,24 @@ class AgentRunner:
             if decision_type == "final":
                 answer = str(decision.get("answer") or "").strip()
                 if answer:
+                    logger.info(
+                        "Agent completed user=%s step=%s calls=%s",
+                        getattr(context.user, "id", "unknown"),
+                        step,
+                        calls,
+                    )
                     return AgentResult(
                         handled=True,
                         reply=answer,
                         tool_calls=tuple(calls),
                     )
+                self._log_rejected_decision(context, step, "empty_final")
                 scratchpad.append({"error": "The final answer was empty."})
                 continue
 
             if decision_type != "tool":
+                reason = "empty_decision" if not decision else "invalid_decision_type"
+                self._log_rejected_decision(context, step, reason)
                 scratchpad.append({"error": "Invalid decision type. Use 'tool' or 'final'."})
                 continue
 
@@ -209,6 +234,7 @@ class AgentRunner:
             tool = self._tools.get(tool_name)
             arguments = decision.get("arguments")
             if tool is None:
+                self._log_rejected_decision(context, step, "unknown_tool", tool_name)
                 scratchpad.append(
                     {
                         "error": f"Unknown tool: {tool_name}",
@@ -217,6 +243,7 @@ class AgentRunner:
                 )
                 continue
             if not isinstance(arguments, dict):
+                self._log_rejected_decision(context, step, "invalid_arguments", tool_name)
                 scratchpad.append({"error": f"Arguments for {tool_name} must be a JSON object."})
                 continue
 
@@ -226,6 +253,7 @@ class AgentRunner:
                 and previous.get("arguments_signature") == signature
                 for previous in scratchpad
             ):
+                self._log_rejected_decision(context, step, "duplicate_tool_call", tool_name)
                 scratchpad.append({"error": f"Duplicate call blocked for tool {tool_name}."})
                 continue
 
@@ -242,6 +270,7 @@ class AgentRunner:
                     timeout=self._tool_timeout_seconds,
                 )
             except ToolInputError as exc:
+                self._log_rejected_decision(context, step, "invalid_tool_input", tool_name)
                 scratchpad.append(
                     {
                         "tool": tool_name,
@@ -272,6 +301,12 @@ class AgentRunner:
                 continue
 
             if result.direct:
+                logger.info(
+                    "Agent completed via direct tool user=%s step=%s calls=%s",
+                    getattr(context.user, "id", "unknown"),
+                    step,
+                    calls,
+                )
                 return AgentResult(
                     handled=True,
                     reply=result.reply,
@@ -319,6 +354,11 @@ class AgentRunner:
                             reply=answer,
                             tool_calls=tuple(calls),
                         )
+                self._log_rejected_decision(
+                    context,
+                    self._max_steps + 1,
+                    "invalid_safe_final",
+                )
             except Exception:
                 logger.exception("Agent safe finalization failed")
 
