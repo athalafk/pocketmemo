@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import get_args
 
 from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -21,7 +22,7 @@ from pocketmemo.bot.views import (
     _note_folder_view,
     _notes_home,
 )
-from pocketmemo.config import get_settings
+from pocketmemo.config import LLMProvider, get_settings
 from pocketmemo.i18n import t
 from pocketmemo.llm import llm
 from pocketmemo.models import User
@@ -29,6 +30,7 @@ from pocketmemo.services import file_manager, folder, memory, note, reminder
 
 logger = logging.getLogger(__name__)
 _settings = get_settings()
+_LLM_PROVIDERS = get_args(LLMProvider)
 
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -66,6 +68,11 @@ async def _settings_callback(
     if data.startswith(llm_actions) and not _settings.allowed_user_ids_set:
         await query.edit_message_text(t("llm_admin_only", lang))
         return True
+    # The provider becomes part of a settings key, so only known names are accepted.
+    provider_actions = ("llmprov:", "llmmodel:", "llmmodeltype:", "llmkey:", "llmurl:")
+    if data.startswith(provider_actions) and data.split(":", 1)[1] not in _LLM_PROVIDERS:
+        await query.edit_message_text(t("action_unknown", lang))
+        return True
     if data.startswith("setlang:"):
         code = data.split(":", 1)[1]
         if code in ("en", "id"):
@@ -75,11 +82,10 @@ async def _settings_callback(
             await query.edit_message_text(t("action_unknown", lang))
     elif data.startswith("llmprov:"):
         prov = data.split(":", 1)[1]
-        if prov in ("gemini", "openai", "ollama"):
-            await settings_store.set_value("llm_provider", prov)
-            llm.reconfigure()
-            text, kb = await _llm_settings_view(user)
-            await query.edit_message_text(text, reply_markup=kb)
+        await settings_store.set_value("llm_provider", prov)
+        llm.reconfigure()
+        text, kb = await _llm_settings_view(user)
+        await query.edit_message_text(text, reply_markup=kb)
     elif data.startswith("llmmodel:"):
         prov = data.split(":", 1)[1]
         try:

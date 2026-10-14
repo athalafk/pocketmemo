@@ -402,6 +402,40 @@ async def test_llm_callbacks_require_allowlist_like_llm_command(monkeypatch, dat
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "data",
+    [
+        "llmprov:evil",
+        "llmmodel:evil",
+        "llmmodeltype:evil",
+        "llmkey:evil",
+        "llmurl:evil",
+        "llmkey:",
+    ],
+)
+async def test_llm_callbacks_reject_unknown_provider(monkeypatch, data):
+    update, query = _callback_update(data)
+    context = SimpleNamespace(user_data={})
+    monkeypatch.setattr(
+        callbacks, "_get_or_create_user", AsyncMock(return_value=SimpleNamespace(id=7, language="en"))
+    )
+    monkeypatch.setattr(
+        callbacks, "_settings", SimpleNamespace(allowed_user_ids_set={7}, default_language="en")
+    )
+    set_value = AsyncMock()
+    monkeypatch.setattr(callbacks.settings_store, "set_value", set_value)
+    list_models = AsyncMock(return_value=["m"])
+    monkeypatch.setattr(callbacks.llm, "list_models", list_models)
+
+    await callbacks.on_callback(update, context)
+
+    set_value.assert_not_awaited()
+    list_models.assert_not_awaited()
+    assert context.user_data == {}
+    query.edit_message_text.assert_awaited_once_with(callbacks.t("action_unknown", "en"))
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("data", ["unknown:1", "folder", "noattach:1", ""])
 async def test_unknown_callback_is_answered_and_ignored(monkeypatch, data):
     update, query = _callback_update(data)
