@@ -9,6 +9,7 @@ from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, 
 from telegram.ext import ContextTypes
 
 from pocketmemo import settings_store
+from pocketmemo.bot.common import clear_pending_input
 from pocketmemo.bot.common import (
     get_or_create_user as _get_or_create_user,
 )
@@ -47,6 +48,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await query.edit_message_text(t("access_denied", _settings.default_language))
         return
     data = query.data or ""
+    # Pressing any button abandons a half-finished text prompt; a button that starts
+    # a new prompt sets its key again below.
+    clear_pending_input(context)
 
     # Each domain returns False for data it does not own; prefixes never overlap.
     for handle in (
