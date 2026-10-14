@@ -165,3 +165,19 @@ async def _note_folder_chooser(user: User, note_id: int) -> tuple[str, InlineKey
         [InlineKeyboardButton(t("folder_uncategorized", lang), callback_data=f"movnto:{note_id}:0")]
     )
     return t("folder_choose", lang), InlineKeyboardMarkup(buttons)
+
+
+def _reminder_extras_keyboard(reminder_id: int, lang: str) -> InlineKeyboardMarkup:
+    """Buttons to add a place or meeting link to a new reminder."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t("reminder_btn_addloc", lang), callback_data=f"raddloc:{reminder_id}"
+                ),
+                InlineKeyboardButton(
+                    t("reminder_btn_addlink", lang), callback_data=f"raddlink:{reminder_id}"
+                ),
+            ]
+        ]
+    )

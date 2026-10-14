@@ -45,15 +45,6 @@ async def set_value(key: str, value: str) -> None:
     _cache[key] = value
 
 
-async def delete_value(key: str) -> None:
-    async with SessionLocal() as session:
-        row = await session.get(Setting, key)
-        if row is not None:
-            await session.delete(row)
-            await session.commit()
-    _cache.pop(key, None)
-
-
 def has_secret(key: str) -> bool:
     return bool(_cache.get(key))
 

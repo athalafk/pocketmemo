@@ -1,7 +1,5 @@
 """Async SQLAlchemy engine and session factory."""
 
-from collections.abc import AsyncIterator
-
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -49,15 +47,3 @@ SessionLocal = async_sessionmaker(
     expire_on_commit=False,
     autoflush=False,
 )
-
-
-async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: yield a DB session that auto-closes."""
-    async with SessionLocal() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
