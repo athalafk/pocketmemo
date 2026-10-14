@@ -355,6 +355,8 @@ def _callback_update(data: str):
     [
         ("cancel:5", "reminder", "cancel_reminder", (5,)),
         ("delnote:3", "note", "delete_note", (3,)),
+        ("rmfile:4", "note", "detach_file", (4,)),
+        ("delnfolder:2", "folder", "delete_folder", (2,)),
         ("movnto:3:0", "folder", "move_note", (3, None)),
         ("delmem:9", "memory", "delete_memory", (9,)),
         ("delfile:4", "file_manager", "delete_file", (4,)),
