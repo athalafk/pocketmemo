@@ -46,14 +46,10 @@ LANGV=$(ask "Default language (en/id)" "en")
 say "3) LLM provider"
 echo "  - gemini : Google Gemini (free tier)"
 echo "  - openai : OpenAI-compatible (OpenAI, Groq, OpenRouter, LM Studio...)"
-echo "  - ollama : local / offline"
-PROV=$(ask "Provider (gemini/openai/ollama)" "gemini")
+PROV=$(ask "Provider (gemini/openai)" "gemini")
 
-# Ollama default URL differs between Docker (reach the host) and local installs.
-if [ "$INSTALL" = "docker" ]; then DEF_OLLAMA="http://host.docker.internal:11434"; else DEF_OLLAMA="http://localhost:11434"; fi
 
 GEMINI_KEY=""; OPENAI_KEY=""; OPENAI_URL="https://api.openai.com/v1"; OPENAI_MODEL="gpt-4o-mini"
-OLLAMA_URL="$DEF_OLLAMA"; OLLAMA_MODEL="llama3.1"; OLLAMA_EMB="nomic-embed-text"
 EMB_DIM="768"
 case "$PROV" in
   gemini) GEMINI_KEY=$(ask "Gemini API key (or leave blank and set later with /llm)" "") ;;
@@ -61,10 +57,6 @@ case "$PROV" in
     OPENAI_KEY=$(ask "API key (leave blank to set later with /llm)" "")
     OPENAI_URL=$(ask "Base URL" "$OPENAI_URL")
     OPENAI_MODEL=$(ask "Chat model" "$OPENAI_MODEL") ;;
-  ollama)
-    OLLAMA_URL=$(ask "Ollama base URL" "$OLLAMA_URL")
-    OLLAMA_MODEL=$(ask "Chat model" "$OLLAMA_MODEL")
-    OLLAMA_EMB=$(ask "Embedding model (must be 768-dim)" "$OLLAMA_EMB") ;;
 esac
 
 say "4) Database"
@@ -117,10 +109,6 @@ OPENAI_API_KEY=$OPENAI_KEY
 OPENAI_BASE_URL=$OPENAI_URL
 OPENAI_CHAT_MODEL=$OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-
-OLLAMA_BASE_URL=$OLLAMA_URL
-OLLAMA_CHAT_MODEL=$OLLAMA_MODEL
-OLLAMA_EMBEDDING_MODEL=$OLLAMA_EMB
 
 $DB_BLOCK
 

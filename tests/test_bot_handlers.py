@@ -641,7 +641,7 @@ async def test_button_press_cancels_half_finished_text_input(monkeypatch):
     # not be swallowed as a model name.
     update, query = _callback_update("pickmodel:0")
     context = SimpleNamespace(user_data={
-        "pending_setting": {"skey": "ollama_chat_model", "secret": False},
+        "pending_setting": {"skey": "openai_chat_model", "secret": False},
         "model_pick": {"provider": "gemini", "models": ["gemini-x"]},
     })
     monkeypatch.setattr(
@@ -707,7 +707,7 @@ async def test_formatted_reply_falls_back_to_plain_text_when_telegram_rejects_it
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("provider", ["gemini", "openai", "ollama"])
+@pytest.mark.parametrize("provider", ["gemini", "openai", "claude"])
 async def test_llm_settings_have_no_base_url_button(monkeypatch, provider):
     from pocketmemo.bot import views
 

@@ -11,8 +11,7 @@ Talk to it in plain English or Indonesian; your data stays on your own server.
   Search is semantic, so the wording doesn't have to match.
 - **Files**: send photos or documents and find them later by description.
 - **Reminders**: one-time or recurring, with an optional place or meeting link.
-- **LLM of your choice**: Google Gemini, any OpenAI-compatible API, Anthropic Claude, or
-  local Ollama.
+- **LLM of your choice**: Google Gemini, any OpenAI-compatible API, or Anthropic Claude.
   Switch provider, model, and API key from the chat with `/llm`.
 
 Commands: `/start`, `/help`, `/whoami`, `/language`, `/llm`, `/reminders`, `/notes`,

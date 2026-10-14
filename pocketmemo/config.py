@@ -10,7 +10,7 @@ from pytz import UnknownTimeZoneError, timezone
 
 BotMode = Literal["polling", "webhook"]
 Language = Literal["en", "id"]
-LLMProvider = Literal["gemini", "openai", "claude", "ollama"]
+LLMProvider = Literal["gemini", "openai", "claude"]
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"]
 RequiredString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # If empty, a key is derived from WEBHOOK_SECRET.
     encryption_key: str = ""
 
-    # LLM provider: Gemini, OpenAI-compatible, or Ollama.
+    # LLM provider: Gemini, OpenAI-compatible, or Claude.
     llm_provider: LLMProvider = "gemini"
     # Provider for embeddings (semantic search). Defaults to LLM_PROVIDER and, unlike
     # the chat provider, cannot be changed from /llm: vectors from different models
@@ -63,18 +63,12 @@ class Settings(BaseSettings):
     openai_chat_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
 
-    # Ollama (local). Use a vision-capable chat model (e.g. llava) for image Q&A.
     # Anthropic Claude (chat and vision only; embeddings come from EMBEDDING_PROVIDER).
     claude_api_key: str = ""
     claude_chat_model: str = "claude-opus-5-5"
 
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_chat_model: str = "llama3.1"
-    ollama_embedding_model: str = "nomic-embed-text"
-
     # Embedding vector size — the dimension of the DB embedding columns. Chosen
-    # ONCE at install to match your embedding model. Gemini & OpenAI are resized to
-    # this; for Ollama pick a model that natively outputs this size.
+    # ONCE at install to match your embedding model. Gemini & OpenAI are resized to it.
     # (pgvector's ivfflat index supports up to 2000 dims.)
     embedding_dim: int = Field(default=768, ge=1, le=2000)
 
@@ -159,28 +153,20 @@ class Settings(BaseSettings):
             "gemini": (self.gemini_chat_model, self.gemini_embedding_model),
             "openai": (self.openai_chat_model, self.openai_embedding_model),
             "claude": (self.claude_chat_model,),
-            "ollama": (self.ollama_chat_model, self.ollama_embedding_model),
         }
         if (self.embedding_provider or self.llm_provider) == "claude":
             raise ValueError(
-                "Claude has no embeddings API; set EMBEDDING_PROVIDER to gemini, openai, or ollama"
+                "Claude has no embeddings API; set EMBEDDING_PROVIDER to gemini or openai"
             )
         if any(not model.strip() for model in provider_models[self.llm_provider]):
             raise ValueError(
                 f"chat and embedding model names are required for {self.llm_provider}"
             )
 
-        if self.llm_provider in {"openai", "ollama"}:
-            base_url = (
-                self.openai_base_url
-                if self.llm_provider == "openai"
-                else self.ollama_base_url
-            )
-            parsed = urlparse(base_url)
+        if self.llm_provider == "openai":
+            parsed = urlparse(self.openai_base_url)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                raise ValueError(
-                    f"{self.llm_provider.upper()}_BASE_URL must be a valid HTTP(S) URL"
-                )
+                raise ValueError("OPENAI_BASE_URL must be a valid HTTP(S) URL")
         return self
 
     @property

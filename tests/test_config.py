@@ -24,12 +24,13 @@ def test_choice_values_are_normalized():
     settings = Settings(
         bot_mode=" POLLING ",
         default_language=" ID ",
-        llm_provider=" OLLAMA ",
+        llm_provider=" CLAUDE ",
+        embedding_provider="gemini",
         log_level=" warning ",
     )
     assert settings.bot_mode == "polling"
     assert settings.default_language == "id"
-    assert settings.llm_provider == "ollama"
+    assert settings.llm_provider == "claude"
     assert settings.log_level == "WARNING"
 
 

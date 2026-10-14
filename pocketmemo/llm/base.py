@@ -1,6 +1,6 @@
 """Provider-agnostic LLM interface.
 
-To support a new backend (OpenAI, Ollama, a local model, ...), implement these
+To support a new backend (a hosted API, a local model, ...), implement these
 two primitives in a subclass and register it in ``service._make_provider``. The
 domain logic (intent classification, chat, embeddings, vision) is built on top
 of these in ``service.LLMService`` and does not depend on any specific vendor.

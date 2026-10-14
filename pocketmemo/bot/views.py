@@ -10,6 +10,7 @@ from pocketmemo.models import User
 from pocketmemo.services import file_manager, folder, note
 
 _settings = get_settings()
+_PROVIDER_LABELS = {"gemini": "Gemini", "openai": "OpenAI", "claude": "Claude"}
 
 
 async def _llm_settings_view(user: User) -> tuple[str, InlineKeyboardMarkup]:
@@ -21,30 +22,26 @@ async def _llm_settings_view(user: User) -> tuple[str, InlineKeyboardMarkup]:
     elif provider == "claude":
         model = settings_store.get("claude_chat_model") or _settings.claude_chat_model
         key_set = settings_store.has_secret("claude_api_key") or bool(_settings.claude_api_key)
-    elif provider == "ollama":
-        model = settings_store.get("ollama_chat_model") or _settings.ollama_chat_model
-        key_set = True
     else:
         model = settings_store.get("gemini_chat_model") or _settings.gemini_chat_model
         key_set = settings_store.has_secret("gemini_api_key") or bool(_settings.gemini_api_key)
 
-    lines = [t("llm_current", lang, provider=provider.capitalize()), t("llm_model", lang, model=model)]
-    if provider != "ollama":
-        status = t("llm_key_set" if key_set else "llm_key_unset", lang)
-        lines.append(t("llm_key_status", lang, status=status))
-
+    status = t("llm_key_set" if key_set else "llm_key_unset", lang)
+    lines = [
+        t("llm_current", lang, provider=_PROVIDER_LABELS[provider]),
+        t("llm_model", lang, model=model),
+        t("llm_key_status", lang, status=status),
+    ]
     buttons = [
         [
-            InlineKeyboardButton("Gemini", callback_data="llmprov:gemini"),
-            InlineKeyboardButton("OpenAI", callback_data="llmprov:openai"),
-            InlineKeyboardButton("Claude", callback_data="llmprov:claude"),
-            InlineKeyboardButton("Ollama", callback_data="llmprov:ollama"),
-        ]
+            InlineKeyboardButton(label, callback_data=f"llmprov:{name}")
+            for name, label in _PROVIDER_LABELS.items()
+        ],
+        [
+            InlineKeyboardButton(t("llm_btn_model", lang), callback_data=f"llmmodel:{provider}"),
+            InlineKeyboardButton(t("llm_btn_key", lang), callback_data=f"llmkey:{provider}"),
+        ],
     ]
-    row = [InlineKeyboardButton(t("llm_btn_model", lang), callback_data=f"llmmodel:{provider}")]
-    if provider != "ollama":
-        row.append(InlineKeyboardButton(t("llm_btn_key", lang), callback_data=f"llmkey:{provider}"))
-    buttons.append(row)
     return "\n".join(lines), InlineKeyboardMarkup(buttons)
 
 

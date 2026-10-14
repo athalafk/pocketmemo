@@ -14,7 +14,7 @@ labels: bug
 **Environment**
 - PocketMemo version or commit:
 - Install method (docker / sqlite / native):
-- LLM provider (gemini / openai / ollama):
+- LLM provider (gemini / openai / claude):
 
 **Logs**
 <!-- Remove tokens and API keys first: Telegram bot tokens can appear in logged URLs. -->
