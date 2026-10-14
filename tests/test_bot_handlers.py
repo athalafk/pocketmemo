@@ -582,3 +582,26 @@ async def test_unknown_callback_is_answered_and_ignored(monkeypatch, data):
 
     query.answer.assert_awaited_once_with()
     query.edit_message_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["quota_exceeded", "llm_timeout"])
+async def test_unavailable_llm_replies_without_legacy_fallback(monkeypatch, key):
+    from pocketmemo.llm import LLMUnavailableError
+
+    update = _message_update("halo")
+    classify = AsyncMock()
+    monkeypatch.setattr(messages.settings, "agent_enabled", True)
+    monkeypatch.setattr(
+        messages, "get_or_create_user", AsyncMock(return_value=SimpleNamespace(id=7, language="en"))
+    )
+    monkeypatch.setattr(messages.conversation, "get_recent_history", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        messages.pocketmemo_agent, "run", AsyncMock(side_effect=LLMUnavailableError(key))
+    )
+    monkeypatch.setattr(messages.llm, "classify_intent", classify)
+
+    await handlers.handle_text(update, _context())
+
+    classify.assert_not_awaited()
+    update.message.reply_text.assert_awaited_once_with(messages.t(key, "en"))

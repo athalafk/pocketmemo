@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
 from enum import StrEnum
 from typing import Any
 
+import httpx
+import openai
+from google.api_core.exceptions import ResourceExhausted
+
 from pocketmemo import settings_store
 from pocketmemo.config import get_settings
-from pocketmemo.llm.base import LLMProvider
+from pocketmemo.llm.base import LLMProvider, LLMUnavailableError, Part
 from pocketmemo.llm.gemini import GeminiProvider
 from pocketmemo.llm.ollama import OllamaProvider
 from pocketmemo.llm.openai import OpenAIProvider
@@ -104,6 +110,49 @@ def _make_provider() -> LLMProvider:
     raise ValueError(f"Unknown LLM provider: {name!r}. Supported: gemini, openai, ollama.")
 
 
+def _is_rate_limit(exc: Exception) -> bool:
+    if isinstance(exc, ResourceExhausted | openai.RateLimitError):
+        return True
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429
+
+
+class _GuardedProvider(LLMProvider):
+    """Wraps a provider with a timeout, duration logging, and one error for quota/timeouts.
+
+    Without the timeout, SDK retries can hold a single call for up to 10 minutes,
+    and Telegram updates are handled one at a time, so the whole bot would stall.
+    """
+
+    def __init__(self, inner: LLMProvider, name: str, *, timeout: float) -> None:
+        self._inner = inner
+        self._name = name
+        self._timeout = timeout
+
+    async def _guard(self, kind: str, call):
+        start = time.monotonic()
+        try:
+            result = await asyncio.wait_for(call, self._timeout)
+        except TimeoutError:
+            logger.warning("LLM %s via %s timed out after %.0fs", kind, self._name, self._timeout)
+            raise LLMUnavailableError("llm_timeout") from None
+        except Exception as exc:
+            if not _is_rate_limit(exc):
+                raise
+            logger.warning("LLM %s via %s was rate-limited", kind, self._name)
+            raise LLMUnavailableError("quota_exceeded") from exc
+        logger.info("LLM %s via %s took %.1fs", kind, self._name, time.monotonic() - start)
+        return result
+
+    async def generate(self, parts: list[Part], **kwargs) -> str:
+        return await self._guard("generate", self._inner.generate(parts, **kwargs))
+
+    async def embed(self, text: str, *, task_type: str) -> list[float]:
+        return await self._guard("embed", self._inner.embed(text, task_type=task_type))
+
+    async def list_models(self) -> list[str]:
+        return await self._guard("list_models", self._inner.list_models())
+
+
 class LLMService:
     """Domain-level LLM operations, independent of the underlying provider."""
 
@@ -113,7 +162,10 @@ class LLMService:
     @property
     def provider(self) -> LLMProvider:
         if self._provider is None:
-            self._provider = _make_provider()
+            inner = _make_provider()
+            name = effective_provider_name()
+            logger.info("Using LLM provider=%s model=%s", name, getattr(inner, "_chat_model", "?"))
+            self._provider = _GuardedProvider(inner, name, timeout=_settings.llm_timeout_seconds)
         return self._provider
 
     def reconfigure(self) -> None:

@@ -15,6 +15,17 @@ from abc import ABC, abstractmethod
 Part = object
 
 
+class LLMUnavailableError(Exception):
+    """The LLM is rate-limited or too slow; the user should retry later.
+
+    ``message_key`` is the locale key to show the user.
+    """
+
+    def __init__(self, message_key: str) -> None:
+        super().__init__(message_key)
+        self.message_key = message_key
+
+
 class LLMProvider(ABC):
     """Minimal capabilities every LLM backend must provide."""
 

@@ -20,7 +20,7 @@ from pocketmemo import settings_store
 from pocketmemo.agent.core import AgentContext, AgentResult, AgentRunner, AgentTool, ToolResult
 from pocketmemo.agent.tools import build_tools
 from pocketmemo.config import get_settings
-from pocketmemo.llm import llm
+from pocketmemo.llm import LLMUnavailableError, llm
 from pocketmemo.llm.service import effective_provider_name
 
 _DIRECT_TOOLS = {
@@ -242,6 +242,8 @@ def _simulated_tools(case: EvalCase) -> dict[str, AgentTool]:
 
 
 def _is_quota_error(exc: Exception) -> bool:
+    if isinstance(exc, LLMUnavailableError):
+        return exc.message_key == "quota_exceeded"
     message = str(exc).casefold()
     return type(exc).__name__ == "ResourceExhausted" or ("429" in message and "quota" in message)
 
