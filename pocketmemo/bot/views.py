@@ -181,3 +181,18 @@ def _reminder_extras_keyboard(reminder_id: int, lang: str) -> InlineKeyboardMark
             ]
         ]
     )
+
+
+def _file_organize_keyboard(
+    file_id: int, lang: str, has_notes: bool, has_folders: bool
+) -> InlineKeyboardMarkup:
+    """Buttons offered after saving a file: attach to a note, file into a folder, done."""
+    buttons = []
+    if has_notes:
+        buttons.append((t("note_btn_choosenote", lang), f"attachlist:{file_id}"))
+    if has_folders:
+        buttons.append((t("file_btn_putfolder", lang), f"movefile:{file_id}"))
+    buttons.append((t("btn_done", lang), "noattach"))
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(text, callback_data=data)] for text, data in buttons]
+    )
