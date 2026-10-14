@@ -11,6 +11,8 @@ from telegram.ext import ContextTypes
 from pocketmemo import settings_store
 from pocketmemo.bot.common import (
     get_or_create_user as _get_or_create_user,
+)
+from pocketmemo.bot.common import (
     set_user_language as _set_user_language,
 )
 from pocketmemo.bot.views import (
@@ -104,8 +106,13 @@ async def _settings_callback(
             if context.user_data is not None:
                 context.user_data["model_pick"] = {"provider": prov, "models": models}
             btns = [[InlineKeyboardButton(m, callback_data=f"pickmodel:{i}")] for i, m in enumerate(models)]
-            btns.append([InlineKeyboardButton(t("llm_btn_type_model", lang), callback_data=f"llmmodeltype:{prov}")])
-            await query.edit_message_text(t("llm_choose_model", lang), reply_markup=InlineKeyboardMarkup(btns))
+            type_model = InlineKeyboardButton(
+                t("llm_btn_type_model", lang), callback_data=f"llmmodeltype:{prov}"
+            )
+            btns.append([type_model])
+            await query.edit_message_text(
+                t("llm_choose_model", lang), reply_markup=InlineKeyboardMarkup(btns)
+            )
     elif data.startswith("pickmodel:"):
         idx = data.split(":", 1)[1]
         info = context.user_data.get("model_pick") if context.user_data is not None else None
@@ -280,9 +287,10 @@ async def _note_attachment_callback(
         if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
             reply, can_ocr = await note.attach_file_to_note(user, int(parts[1]), int(parts[2]))
             if can_ocr:
-                kb = InlineKeyboardMarkup(
-                    [[InlineKeyboardButton(t("note_btn_ocr", lang), callback_data=f"ocrnote:{parts[1]}:{parts[2]}")]]
+                ocr = InlineKeyboardButton(
+                    t("note_btn_ocr", lang), callback_data=f"ocrnote:{parts[1]}:{parts[2]}"
                 )
+                kb = InlineKeyboardMarkup([[ocr]])
                 await query.edit_message_text(reply, reply_markup=kb)
             else:
                 await query.edit_message_text(reply)
@@ -305,10 +313,17 @@ async def _note_attachment_callback(
                 await query.edit_message_text(t("note_files_empty", lang))
             else:
                 btns = [
-                    [InlineKeyboardButton(t("note_rmfile_btn", lang, name=f.display_name[:25]), callback_data=f"rmfile:{f.id}")]
+                    [
+                        InlineKeyboardButton(
+                            t("note_rmfile_btn", lang, name=f.display_name[:25]),
+                            callback_data=f"rmfile:{f.id}",
+                        )
+                    ]
                     for f in files
                 ]
-                await query.edit_message_text(t("note_files_header", lang), reply_markup=InlineKeyboardMarkup(btns))
+                await query.edit_message_text(
+                    t("note_files_header", lang), reply_markup=InlineKeyboardMarkup(btns)
+                )
     elif data.startswith("rmfile:"):
         fid = data.split(":", 1)[1]
         if fid.isdigit():

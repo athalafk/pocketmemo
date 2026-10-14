@@ -9,7 +9,7 @@ single-user data sizes of a local install.
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import select
 
@@ -19,7 +19,7 @@ from pocketmemo.database import DIALECT
 def cosine_distance(a: Sequence[float], b: Sequence[float]) -> float:
     """Cosine distance (1 - cosine similarity), matching pgvector's ``<=>``."""
     dot = na = nb = 0.0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=False):
         dot += x * y
         na += x * x
         nb += y * y

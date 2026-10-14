@@ -224,7 +224,7 @@ async def health_check() -> dict[str, str]:
         logger.exception("Health check: DB ping failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="db unavailable"
-        )
+        ) from None
     return {"status": "ok", "service": "pocketmemo", "db": "ok"}
 
 

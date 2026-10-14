@@ -38,8 +38,7 @@ uvicorn pocketmemo.main:app --reload --port 8473
   `alembic revision --autogenerate -m "describe change"`.
 - Add or update tests for the behavior you change.
 - Never commit secrets or `.env`.
-- Lint with `ruff` (config in `pyproject.toml`). The codebase isn't lint-clean yet, so
-  just don't add new errors in the files you touch.
+- `ruff check .` must pass (CI runs it; config in `pyproject.toml`).
 
 To check the agent against a real LLM (it simulates all tools and makes real API calls):
 `python -m pocketmemo.agent.eval` (`--list` shows the cases, `--case NAME` runs one).

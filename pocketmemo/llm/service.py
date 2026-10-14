@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pocketmemo import settings_store
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 _settings = get_settings()
 
 
-class Intent(str, Enum):
+class Intent(StrEnum):
     """All recognised user intents."""
 
     SAVE_MEMORY = "save_memory"

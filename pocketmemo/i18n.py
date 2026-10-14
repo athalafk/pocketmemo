@@ -8,7 +8,7 @@ itself, so the bot never crashes on a missing translation.
 from __future__ import annotations
 
 import json
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 LOCALES_DIR = Path(__file__).parent / "locales"
@@ -17,7 +17,7 @@ SUPPORTED_LANGUAGES = ("en", "id")
 LANGUAGE_NAMES = {"en": "English", "id": "Indonesian"}
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load(lang: str) -> dict[str, str]:
     path = LOCALES_DIR / f"{lang}.json"
     if not path.exists():
