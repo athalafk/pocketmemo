@@ -16,7 +16,7 @@ from sqlalchemy import text
 from telegram import BotCommand, Update
 from telegram.ext import Application, ApplicationBuilder
 
-from pocketmemo import settings_store
+from pocketmemo import __version__, settings_store
 from pocketmemo.bot.handlers import register_handlers
 from pocketmemo.config import get_settings
 from pocketmemo.database import DIALECT, SessionLocal
@@ -207,7 +207,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PocketMemo",
     description="Your personal AI assistant on Telegram",
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url=None,
@@ -230,7 +230,7 @@ async def health_check() -> dict[str, str]:
 
 @app.get("/")
 async def root() -> dict[str, str]:
-    return {"service": "pocketmemo", "version": "1.0.0", "docs": "/docs"}
+    return {"service": "pocketmemo", "version": __version__, "docs": "/docs"}
 
 
 @app.post("/webhook")
