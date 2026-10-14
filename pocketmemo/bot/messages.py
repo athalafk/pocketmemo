@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -289,6 +290,13 @@ async def handle_attachment(
         return
 
     is_visual = media_mime.startswith("image/") or media_mime == "application/pdf"
+    if media_file_id and is_visual and context.user_data is not None:
+        # Lets the agent answer follow-up questions about this image (ask_about_recent_image).
+        context.user_data["recent_media"] = {
+            "file_id": media_file_id,
+            "mime": media_mime,
+            "at": time.time(),
+        }
     if caption and media_file_id and is_visual:
         classification = await llm.classify_intent(caption)
         if classification["intent"] == Intent.GENERAL_CHAT.value:
@@ -310,6 +318,9 @@ async def handle_attachment(
         logger.exception("Failed to save file for user %s", user.id)
         reply = t("file_save_error", language)
 
+    if stored_file_id and is_visual:
+        await conversation.save_turn(user.id, "user", "[sent an image]")
+        await conversation.save_turn(user.id, "assistant", reply)
     if stored_file_id:
         has_notes = bool(await note.get_recent_notes(user, limit=1))
         has_folders = bool(await folder.get_folders(user))

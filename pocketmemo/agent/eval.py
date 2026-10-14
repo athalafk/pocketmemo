@@ -24,6 +24,7 @@ from pocketmemo.llm import LLMUnavailableError, llm
 from pocketmemo.llm.service import effective_provider_name
 
 _DIRECT_TOOLS = {
+    "ask_about_recent_image",
     "save_memory",
     "save_note",
     "recall_note",
@@ -183,6 +184,35 @@ def eval_cases() -> tuple[EvalCase, ...]:
             observations={"list_reminders": reminder_data},
             must_contain=("11:30", "10:30"),
             max_planner_calls=2,
+        ),
+        EvalCase(
+            name="follow_up_about_recent_image",
+            message="Apakah kamu tahu siapakah dia?",
+            expected_tools=("ask_about_recent_image",),
+            observations={"ask_about_recent_image": "Sepertinya ini karakter anime original."},
+            must_not_contain=("B2",),
+            history=(
+                ("user", "[sent an image] ini gambar apa?"),
+                ("assistant", "Ilustrasi anime: karakter perempuan berambut ungu bermain game."),
+            ),
+            max_planner_calls=1,
+        ),
+        EvalCase(
+            name="follow_up_from_conversation_no_tool",
+            message="Kenapa begitu?",
+            expected_tools=(),
+            history=(
+                ("user", "Lebih baik kopi atau teh untuk begadang?"),
+                ("assistant", "Kopi biasanya lebih efektif karena kafeinnya lebih tinggi."),
+            ),
+            max_planner_calls=1,
+        ),
+        EvalCase(
+            name="general_knowledge_no_tool",
+            message="Siapa penemu bola lampu?",
+            expected_tools=(),
+            must_contain=("Edison",),
+            max_planner_calls=1,
         ),
     )
 
