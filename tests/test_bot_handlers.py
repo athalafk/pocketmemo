@@ -517,7 +517,6 @@ async def test_callback_rejects_unauthorized_user_before_any_action(monkeypatch)
         ("newfolder", "pending_newfolder", "file"),
         ("newnotefolder", "pending_newfolder", "note"),
         ("llmkey:gemini", "pending_setting", {"skey": "gemini_api_key", "secret": True}),
-        ("llmurl:ollama", "pending_setting", {"skey": "ollama_base_url", "secret": False}),
     ],
 )
 async def test_callback_starts_pending_conversation_state(monkeypatch, data, key, value):
@@ -545,7 +544,6 @@ async def test_callback_starts_pending_conversation_state(monkeypatch, data, key
         "pickmodel:0",
         "llmmodeltype:gemini",
         "llmkey:gemini",
-        "llmurl:ollama",
     ],
 )
 async def test_llm_callbacks_require_allowlist_like_llm_command(monkeypatch, data):
@@ -575,7 +573,6 @@ async def test_llm_callbacks_require_allowlist_like_llm_command(monkeypatch, dat
         "llmmodel:evil",
         "llmmodeltype:evil",
         "llmkey:evil",
-        "llmurl:evil",
         "llmkey:",
     ],
 )
@@ -707,3 +704,15 @@ async def test_formatted_reply_falls_back_to_plain_text_when_telegram_rejects_it
     first, second = message.reply_text.await_args_list
     assert first.args == ("<b>x</b>",) and first.kwargs["parse_mode"] == "HTML"
     assert second.args == ("**x**",) and "parse_mode" not in second.kwargs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["gemini", "openai", "ollama"])
+async def test_llm_settings_have_no_base_url_button(monkeypatch, provider):
+    from pocketmemo.bot import views
+
+    monkeypatch.setattr(views, "effective_provider_name", lambda: provider)
+    _, keyboard = await views._llm_settings_view(SimpleNamespace(language="en"))
+
+    callbacks_data = [b.callback_data for row in keyboard.inline_keyboard for b in row]
+    assert not any(data.startswith("llmurl:") for data in callbacks_data)

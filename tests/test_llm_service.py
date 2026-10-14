@@ -93,3 +93,27 @@ class GuardedProviderTests(IsolatedAsyncioTestCase):
         broken = _GuardedProvider(FailingProvider(ValueError("bad")), "test", timeout=5)
         with self.assertRaises(ValueError):
             await broken.generate(["hi"])
+
+
+class ProviderConfigTests(IsolatedAsyncioTestCase):
+    async def test_base_url_comes_from_env_not_from_chat_settings(self) -> None:
+        from unittest.mock import patch
+
+        from pocketmemo.llm import service
+
+        stored = {"llm_provider": "openai", "openai_base_url": "note today's meeting"}
+        captured = {}
+
+        def fake_openai(**kwargs):
+            captured.update(kwargs)
+            return object()
+
+        with (
+            patch.object(service.settings_store, "get", stored.get),
+            patch.object(service.settings_store, "get_secret", lambda key: None),
+            patch.object(service, "OpenAIProvider", fake_openai),
+        ):
+            service._make_provider()
+
+        self.assertEqual(captured["base_url"], service._settings.openai_base_url)
+

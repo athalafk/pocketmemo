@@ -41,8 +41,6 @@ async def _llm_settings_view(user: User) -> tuple[str, InlineKeyboardMarkup]:
     if provider != "ollama":
         row.append(InlineKeyboardButton(t("llm_btn_key", lang), callback_data=f"llmkey:{provider}"))
     buttons.append(row)
-    if provider in ("openai", "ollama"):
-        buttons.append([InlineKeyboardButton(t("llm_btn_url", lang), callback_data=f"llmurl:{provider}")])
     return "\n".join(lines), InlineKeyboardMarkup(buttons)
 
 
