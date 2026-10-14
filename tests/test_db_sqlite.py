@@ -1,15 +1,16 @@
 """End-to-end tests of the SQLite backend: adaptive Embedding/JSON columns,
 brute-force vector search, and foreign-key enforcement."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 import pytest_asyncio
+from sqlalchemy.exc import IntegrityError
 
 from pocketmemo.database import DIALECT, SessionLocal, engine
 from pocketmemo.db.search import nearest_neighbors
 from pocketmemo.models import Base, Memory, User
-from pocketmemo.services import memory
-from pocketmemo.services import conversation
-from unittest.mock import AsyncMock
+from pocketmemo.services import conversation, memory
 
 
 @pytest_asyncio.fixture
@@ -56,7 +57,7 @@ async def test_embedding_roundtrip_and_nearest_neighbors(schema):
 
 async def test_foreign_keys_are_enforced(schema):
     """The SQLite PRAGMA must reject a child row with no parent user."""
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):
         async with SessionLocal() as session:
             session.add(Memory(user_id=999999, content="orphan"))
             await session.commit()

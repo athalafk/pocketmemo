@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, time, timedelta, timezone
+from datetime import UTC, datetime, time, timedelta
 
 import pytz
 from sqlalchemy import or_, select
@@ -105,7 +105,7 @@ def compute_next_occurrence(
     after: datetime | None = None,
 ) -> datetime | None:
     """Next notification time (UTC) for a recurring schedule, or None if invalid."""
-    after = after or datetime.now(timezone.utc)
+    after = after or datetime.now(UTC)
     after_local = after.astimezone(tz)
     try:
         hh, mm = (int(x) for x in time_str.replace(".", ":").split(":")[:2])
@@ -119,7 +119,7 @@ def compute_next_occurrence(
         event_local = tz.localize(datetime.combine(cand_date, time(hh, mm)))
         remind_local = event_local - timedelta(minutes=lead_minutes)
         if remind_local > after_local:
-            return remind_local.astimezone(timezone.utc)
+            return remind_local.astimezone(UTC)
     return None
 
 
@@ -194,8 +194,8 @@ async def create_reminder(user: User, text: str) -> tuple[str, int | None, bool]
         return t("reminder_ask_time", lang), None, True
 
     event_local = tz.localize(naive)
-    remind_utc = (event_local - timedelta(minutes=lead)).astimezone(timezone.utc)
-    if remind_utc <= datetime.now(timezone.utc):
+    remind_utc = (event_local - timedelta(minutes=lead)).astimezone(UTC)
+    if remind_utc <= datetime.now(UTC):
         return t("reminder_onetime_past", lang, time=f"{event_local:%d %b %H:%M}"), None, False
 
     async with SessionLocal() as session:
@@ -430,7 +430,7 @@ def _apply_changes(rem: Reminder, changes: dict, user: User) -> list[str]:
                     rem.lead_minutes = int(changes["lead_minutes"])
                 rem.remind_at = (
                     tz.localize(naive) - timedelta(minutes=rem.lead_minutes)
-                ).astimezone(timezone.utc)
+                ).astimezone(UTC)
                 rem.is_sent = False
                 applied.append(t("change_time", lang))
             except ValueError:
@@ -503,7 +503,7 @@ async def update_reminder_by_id(user: User, reminder_id: int, text: str) -> str:
 
 async def send_due_reminders(bot) -> None:
     """Send all due reminders. Called by the poller every minute."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with SessionLocal() as session:
         stmt = (
             select(Reminder, User)

@@ -6,18 +6,18 @@ Create Date: 2026-06-07
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 from pocketmemo.config import get_settings
 from pocketmemo.db.types import Embedding, json_type
 
 revision: str = "0001_initial"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Embedding dimension chosen at install (default 768).
 _DIM = get_settings().embedding_dim

@@ -1,12 +1,13 @@
 """Pure-math tests for the cosine-distance used by the SQLite vector search."""
 
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from sqlalchemy.dialects import postgresql
 
-from pocketmemo.db.search import cosine_distance
 from pocketmemo.db import search
+from pocketmemo.db.search import cosine_distance
 from pocketmemo.services import memory
 
 

@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 
+from pocketmemo.agent.core import AgentResult
 from pocketmemo.bot import callbacks, commands, common, handlers, messages
 from pocketmemo.llm import Intent
-from pocketmemo.agent.core import AgentResult
 
 
 @pytest.fixture(autouse=True)
@@ -508,7 +508,14 @@ async def test_callback_starts_pending_conversation_state(monkeypatch, data, key
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "data",
-    ["llmprov:openai", "llmmodel:gemini", "pickmodel:0", "llmmodeltype:gemini", "llmkey:gemini", "llmurl:ollama"],
+    [
+        "llmprov:openai",
+        "llmmodel:gemini",
+        "pickmodel:0",
+        "llmmodeltype:gemini",
+        "llmkey:gemini",
+        "llmurl:ollama",
+    ],
 )
 async def test_llm_callbacks_require_allowlist_like_llm_command(monkeypatch, data):
     update, query = _callback_update(data)
