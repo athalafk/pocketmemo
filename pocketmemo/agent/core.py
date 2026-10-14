@@ -274,32 +274,18 @@ class AgentRunner:
                 )
             except ToolInputError as exc:
                 self._log_rejected_decision(context, step, "invalid_tool_input", tool_name)
-                scratchpad.append(
-                    {
-                        "tool": tool_name,
-                        "arguments_signature": signature,
-                        "error": str(exc),
-                    }
-                )
-                continue
+                error = str(exc)
             except TimeoutError:
                 logger.warning("Agent tool timed out: %s", tool_name)
-                scratchpad.append(
-                    {
-                        "tool": tool_name,
-                        "arguments_signature": signature,
-                        "error": "Tool timed out.",
-                    }
-                )
-                continue
+                error = "Tool timed out."
             except Exception:
                 logger.exception("Agent tool failed: %s", tool_name)
+                error = "Tool failed."
+            else:
+                error = None
+            if error is not None:
                 scratchpad.append(
-                    {
-                        "tool": tool_name,
-                        "arguments_signature": signature,
-                        "error": "Tool failed.",
-                    }
+                    {"tool": tool_name, "arguments_signature": signature, "error": error}
                 )
                 continue
 
@@ -331,56 +317,77 @@ class AgentRunner:
             calls,
         )
 
-        # Once the agent has touched persistent data, never hand the request to
-        # the legacy free-form router. That path cannot see tool observations and
-        # may fabricate an answer. Give the model one tool-free synthesis pass;
-        # if it still fails, return a deterministic safe message.
+        # Tools already ran, so the legacy router must not answer instead.
         if calls:
-            final_prompt = self._build_prompt(
+            return await self._finalize_after_max_steps(
                 message=message,
-                history=[],
                 language=language,
                 scratchpad=scratchpad,
-            )
-            try:
-                decision = await self._planner(final_prompt, _FINALIZE_SYSTEM_PROMPT)
-                if isinstance(decision, dict) and decision.get("type") == "final":
-                    answer = str(decision.get("answer") or "").strip()
-                    if answer:
-                        logger.info(
-                            "Agent finalized safely after max steps user=%s calls=%s",
-                            getattr(context.user, "id", "unknown"),
-                            calls,
-                        )
-                        return AgentResult(
-                            handled=True,
-                            reply=answer,
-                            tool_calls=tuple(calls),
-                        )
-                self._log_rejected_decision(
-                    context,
-                    self._max_steps + 1,
-                    "invalid_safe_final",
-                )
-            except Exception:
-                logger.exception("Agent safe finalization failed")
-
-            safe_reply = (
-                "Maaf, aku belum bisa menyelesaikan permintaan itu dari data yang "
-                "tersimpan. Coba ulangi dengan lebih spesifik."
-                if language == "id"
-                else "Sorry, I couldn't complete that request from your saved data. "
-                "Please try again with a more specific request."
-            )
-            return AgentResult(
-                handled=True,
-                reply=safe_reply,
-                tool_calls=tuple(calls),
-                fallback_reason="safe_finalization_failed",
+                calls=calls,
+                context=context,
             )
 
         return AgentResult(
             handled=False,
             tool_calls=tuple(calls),
             fallback_reason="max_steps_exhausted",
+        )
+
+    async def _finalize_after_max_steps(
+        self,
+        *,
+        message: str,
+        language: str,
+        scratchpad: list[dict[str, Any]],
+        calls: list[str],
+        context: AgentContext,
+    ) -> AgentResult:
+        """Answer from the observations gathered so far, after the step budget ran out.
+
+        Once the agent has touched persistent data, never hand the request to the
+        legacy free-form router. That path cannot see tool observations and may
+        fabricate an answer. Give the model one tool-free synthesis pass; if it
+        still fails, return a deterministic safe message.
+        """
+        final_prompt = self._build_prompt(
+            message=message,
+            history=[],
+            language=language,
+            scratchpad=scratchpad,
+        )
+        try:
+            decision = await self._planner(final_prompt, _FINALIZE_SYSTEM_PROMPT)
+            if isinstance(decision, dict) and decision.get("type") == "final":
+                answer = str(decision.get("answer") or "").strip()
+                if answer:
+                    logger.info(
+                        "Agent finalized safely after max steps user=%s calls=%s",
+                        getattr(context.user, "id", "unknown"),
+                        calls,
+                    )
+                    return AgentResult(
+                        handled=True,
+                        reply=answer,
+                        tool_calls=tuple(calls),
+                    )
+            self._log_rejected_decision(
+                context,
+                self._max_steps + 1,
+                "invalid_safe_final",
+            )
+        except Exception:
+            logger.exception("Agent safe finalization failed")
+
+        safe_reply = (
+            "Maaf, aku belum bisa menyelesaikan permintaan itu dari data yang "
+            "tersimpan. Coba ulangi dengan lebih spesifik."
+            if language == "id"
+            else "Sorry, I couldn't complete that request from your saved data. "
+            "Please try again with a more specific request."
+        )
+        return AgentResult(
+            handled=True,
+            reply=safe_reply,
+            tool_calls=tuple(calls),
+            fallback_reason="safe_finalization_failed",
         )
