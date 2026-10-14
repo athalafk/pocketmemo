@@ -69,11 +69,8 @@ class OpenAIProvider(LLMProvider):
                 messages.append({"role": role, "content": h["content"]})
         messages.append({"role": "user", "content": _to_content(parts)})
 
-        kwargs: dict = {
-            "model": self._chat_model,
-            "messages": messages,
-            "temperature": 0.1 if json_mode else 0.4,
-        }
+        # No temperature: newer OpenAI models only accept their default.
+        kwargs: dict = {"model": self._chat_model, "messages": messages}
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         response = await self._client.chat.completions.create(**kwargs)
