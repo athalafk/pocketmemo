@@ -2,6 +2,7 @@
   "access_denied": "Access denied.",
   "error_generic": "Oops, something went wrong on my side. Please try again in a bit 🙏",
   "quota_exceeded": "I've hit the AI rate limit 😅 Please wait ~1 minute and try again.",
+  "llm_timeout": "The AI is taking too long to respond right now 😅 Please try again in a moment.",
   "not_authorized": "Sorry, this bot is private. Contact the admin if this is a mistake.",
   "language_set": "Language set to English ✅",
   "language_choose": "Choose your language:",

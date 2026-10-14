@@ -2,6 +2,7 @@
   "access_denied": "Akses tidak diizinkan.",
   "error_generic": "Aduh, ada error di sisiku saat memproses itu. Coba lagi sebentar ya 🙏",
   "quota_exceeded": "Lagi kena batas kuota AI 😅 Tunggu ~1 menit lalu coba lagi ya.",
+  "llm_timeout": "AI-nya lagi lambat banget merespons 😅 Coba lagi sebentar lagi ya.",
   "not_authorized": "Maaf, bot ini terbatas. Hubungi admin jika ini kesalahan.",
   "language_set": "Bahasa diatur ke Indonesia ✅",
   "language_choose": "Pilih bahasa kamu:",

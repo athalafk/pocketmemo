@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     # installs. Override with an absolute path if you prefer.
     storage_dir: RequiredString = "storage"
 
+    # Max seconds for one LLM call before the bot gives up and tells the user.
+    llm_timeout_seconds: float = Field(default=60.0, gt=0)
+
     # Single-agent harness. Disable to use the legacy intent router only.
     agent_enabled: bool = True
     agent_max_steps: int = 6

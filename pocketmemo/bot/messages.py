@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from google.api_core.exceptions import ResourceExhausted
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
@@ -16,7 +15,7 @@ from pocketmemo.bot.common import general_chat_system_prompt, get_or_create_user
 from pocketmemo.bot.views import _file_organize_keyboard, _reminder_extras_keyboard
 from pocketmemo.config import get_settings
 from pocketmemo.i18n import t
-from pocketmemo.llm import Intent, llm
+from pocketmemo.llm import Intent, LLMUnavailableError, llm
 from pocketmemo.models import User
 from pocketmemo.services import (
     conversation,
@@ -38,8 +37,8 @@ async def _handle_create_reminder(
     language = user.language
     try:
         reply, reminder_id, needs_time = await reminder.create_reminder(user, text)
-    except ResourceExhausted:
-        reply, reminder_id, needs_time = t("quota_exceeded", language), None, False
+    except LLMUnavailableError as exc:
+        reply, reminder_id, needs_time = t(exc.message_key, language), None, False
     except Exception:
         logger.exception("Failed to create reminder for user %s", user.id)
         reply, reminder_id, needs_time = t("error_generic", language), None, False
@@ -90,8 +89,8 @@ async def _handle_pending_input(
         reminder_id = user_data.pop("pending_edit")
         try:
             reply = await reminder.update_reminder_by_id(user, int(reminder_id), text)
-        except ResourceExhausted:
-            reply = t("quota_exceeded", language)
+        except LLMUnavailableError as exc:
+            reply = t(exc.message_key, language)
         except Exception:
             logger.exception("Failed to update reminder #%s", reminder_id)
             reply = t("error_generic", language)
@@ -102,8 +101,8 @@ async def _handle_pending_input(
         note_id = user_data.pop("pending_note_edit")
         try:
             reply = await note.update_note_by_id(user, int(note_id), text)
-        except ResourceExhausted:
-            reply = t("quota_exceeded", language)
+        except LLMUnavailableError as exc:
+            reply = t(exc.message_key, language)
         except Exception:
             logger.exception("Failed to update note #%s", note_id)
             reply = t("error_generic", language)
@@ -165,8 +164,8 @@ async def _handle_with_agent(
                 telegram_context=context,
             ),
         )
-    except ResourceExhausted:
-        await update.message.reply_text(t("quota_exceeded", language))
+    except LLMUnavailableError as exc:
+        await update.message.reply_text(t(exc.message_key, language))
         return True
     except Exception:
         logger.exception("Agent harness failed for user %s; using legacy router", user.id)
@@ -241,9 +240,8 @@ async def _handle_legacy_intent(
             )
         else:
             reply = t("intent_unknown", language)
-    except ResourceExhausted:
-        logger.warning("Gemini quota exhausted (429) on intent %s", intent)
-        reply = t("quota_exceeded", language)
+    except LLMUnavailableError as exc:
+        reply = t(exc.message_key, language)
     except Exception:
         logger.exception("Failed to handle intent %s for user %s", intent, user.id)
         reply = t("error_generic", language)
@@ -306,9 +304,8 @@ async def handle_attachment(
         reply, stored_file_id = await file_manager.save_file(update, context, user)
     except file_manager.FileTooLargeError as exc:
         reply = t("file_too_large", language, max_mb=exc.max_size_mb)
-    except ResourceExhausted:
-        logger.warning("Gemini quota exhausted (429) during save_file")
-        reply = t("quota_exceeded", language)
+    except LLMUnavailableError as exc:
+        reply = t(exc.message_key, language)
     except Exception:
         logger.exception("Failed to save file for user %s", user.id)
         reply = t("file_save_error", language)
@@ -349,8 +346,8 @@ async def _answer_about_media(
         answer = await llm.answer_about_media(data, media_mime, caption)
     except file_manager.FileTooLargeError as exc:
         answer = t("file_too_large", language, max_mb=exc.max_size_mb)
-    except ResourceExhausted:
-        answer = t("quota_exceeded", language)
+    except LLMUnavailableError as exc:
+        answer = t(exc.message_key, language)
     except Exception:
         logger.exception("Vision Q&A failed for user %s", user.id)
         answer = t("error_generic", language)
