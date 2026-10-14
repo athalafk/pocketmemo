@@ -96,3 +96,11 @@ def test_encryption_material_is_required():
 def test_timezone_must_exist():
     with pytest.raises(ValidationError, match="APP_TIMEZONE"):
         Settings(app_timezone="Mars/Olympus_Mons")
+
+
+def test_claude_needs_a_separate_embedding_provider():
+    with pytest.raises(ValidationError, match="EMBEDDING_PROVIDER"):
+        Settings(llm_provider="claude", embedding_provider=None)
+    with pytest.raises(ValidationError):
+        Settings(llm_provider="gemini", embedding_provider="claude")
+    assert Settings(llm_provider="claude", embedding_provider="gemini").llm_provider == "claude"

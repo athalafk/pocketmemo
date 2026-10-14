@@ -18,6 +18,9 @@ async def _llm_settings_view(user: User) -> tuple[str, InlineKeyboardMarkup]:
     if provider == "openai":
         model = settings_store.get("openai_chat_model") or _settings.openai_chat_model
         key_set = settings_store.has_secret("openai_api_key") or bool(_settings.openai_api_key)
+    elif provider == "claude":
+        model = settings_store.get("claude_chat_model") or _settings.claude_chat_model
+        key_set = settings_store.has_secret("claude_api_key") or bool(_settings.claude_api_key)
     elif provider == "ollama":
         model = settings_store.get("ollama_chat_model") or _settings.ollama_chat_model
         key_set = True
@@ -34,6 +37,7 @@ async def _llm_settings_view(user: User) -> tuple[str, InlineKeyboardMarkup]:
         [
             InlineKeyboardButton("Gemini", callback_data="llmprov:gemini"),
             InlineKeyboardButton("OpenAI", callback_data="llmprov:openai"),
+            InlineKeyboardButton("Claude", callback_data="llmprov:claude"),
             InlineKeyboardButton("Ollama", callback_data="llmprov:ollama"),
         ]
     ]

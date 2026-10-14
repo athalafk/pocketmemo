@@ -10,6 +10,7 @@ import secrets
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import get_args
 
 from fastapi import FastAPI, HTTPException, Request, status
 from sqlalchemy import text
@@ -18,7 +19,7 @@ from telegram.ext import Application, ApplicationBuilder
 
 from pocketmemo import __version__, settings_store
 from pocketmemo.bot.handlers import register_handlers
-from pocketmemo.config import get_settings
+from pocketmemo.config import LLMProvider, get_settings
 from pocketmemo.database import DIALECT, SessionLocal
 from pocketmemo.llm import llm
 from pocketmemo.llm.service import effective_provider_name
@@ -123,10 +124,10 @@ async def _run_startup_preflight() -> None:
 
     llm.reconfigure()
     provider_name = effective_provider_name()
-    if provider_name not in {"gemini", "openai", "ollama"}:
+    if provider_name not in get_args(LLMProvider):
         raise RuntimeError(
             f"Unknown LLM provider {provider_name!r}. "
-            "Choose gemini, openai, or ollama."
+            f"Choose one of: {', '.join(get_args(LLMProvider))}."
         )
     if (
         provider_name == "gemini"
