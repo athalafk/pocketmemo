@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 
 from sqlalchemy import select
 from telegram import Update
+from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from pocketmemo.config import get_settings
@@ -39,6 +43,31 @@ def clear_pending_input(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cancel_pending_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler: a command abandons any half-finished text prompt."""
     clear_pending_input(context)
+
+
+# LLMs answer in Markdown; Telegram only renders it with a parse mode, so the few
+# common constructs are converted to Telegram HTML.
+_HEADING = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
+_CODE = re.compile(r"`([^`\n]+)`")
+_BOLD = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_ITALIC = re.compile(r"(?<![\w*])\*(?![\s*])(.+?)(?<![\s*])\*(?![\w*])")
+
+
+def to_telegram_html(text: str) -> str:
+    """Escape ``text`` for Telegram HTML and render headings, **bold**, *italic*, `code`."""
+    text = html.escape(text, quote=False)
+    text = _HEADING.sub(r"<b>\1</b>", text)
+    text = _CODE.sub(r"<code>\1</code>", text)
+    text = _BOLD.sub(r"<b>\1</b>", text)
+    return _ITALIC.sub(r"<i>\1</i>", text)
+
+
+async def reply_formatted(message, text: str, **kwargs) -> None:
+    """Reply with Markdown rendered; fall back to plain text if Telegram rejects the HTML."""
+    try:
+        await message.reply_text(to_telegram_html(text), parse_mode=ParseMode.HTML, **kwargs)
+    except BadRequest:
+        await message.reply_text(text, **kwargs)
 
 
 def general_chat_system_prompt(language: str) -> str:

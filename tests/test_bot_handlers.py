@@ -115,7 +115,7 @@ async def test_save_memory_intent_routes_to_memory_service(monkeypatch):
     await handlers.handle_text(update, context)
 
     save_memory.assert_awaited_once_with(user, "I parked at B2")
-    update.message.reply_text.assert_awaited_once_with("Saved")
+    update.message.reply_text.assert_awaited_once_with("Saved", parse_mode="HTML")
     assert save_turn.await_count == 2
 
 
@@ -188,7 +188,7 @@ async def test_photo_question_is_answered_without_saving(monkeypatch):
 
     answer.assert_awaited_once_with(b"img", "image/jpeg", "what is in this picture?")
     save_file.assert_not_awaited()
-    update.message.reply_text.assert_awaited_once_with("A cat")
+    update.message.reply_text.assert_awaited_once_with("A cat", parse_mode="HTML")
     assert save_turn.await_count == 2
 
 
@@ -314,7 +314,7 @@ async def test_agent_reminder_result_preserves_followup_flow(monkeypatch, needs_
         assert context.user_data["reminder_draft"] == "original request"
         save_turn.assert_not_awaited()
         update.message.reply_text.assert_awaited_once_with(
-            "Reminder response", reply_markup=None,
+            "Reminder response", parse_mode="HTML", reply_markup=None,
         )
     else:
         assert save_turn.await_count == 2
@@ -350,7 +350,7 @@ async def test_agent_fallback_routes_once_to_legacy_memory(monkeypatch, agent_er
 
     run_agent.assert_awaited_once()
     save_memory.assert_awaited_once_with(user, "parking B2")
-    update.message.reply_text.assert_awaited_once_with("Saved")
+    update.message.reply_text.assert_awaited_once_with("Saved", parse_mode="HTML")
     assert save_turn.await_count == 2
 
 
@@ -677,3 +677,33 @@ async def test_command_cancels_half_finished_text_input():
     await early.callback(SimpleNamespace(), context)
 
     assert context.user_data == {"model_pick": {}}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "karakter **Firefly** dari *Honkai: Star Rail*",
+            "karakter <b>Firefly</b> dari <i>Honkai: Star Rail</i>",
+        ),
+        ("### Jadwal\n* kuliah", "<b>Jadwal</b>\n* kuliah"),
+        ("pakai `docker ps` ya", "pakai <code>docker ps</code> ya"),
+        ("a < b & **c**", "a &lt; b &amp; <b>c</b>"),
+        ("2 * 3 * 4", "2 * 3 * 4"),
+    ],
+)
+def test_llm_markdown_becomes_telegram_html(text, expected):
+    assert common.to_telegram_html(text) == expected
+
+
+@pytest.mark.asyncio
+async def test_formatted_reply_falls_back_to_plain_text_when_telegram_rejects_it():
+    from telegram.error import BadRequest
+
+    message = SimpleNamespace(reply_text=AsyncMock(side_effect=[BadRequest("can't parse"), None]))
+
+    await common.reply_formatted(message, "**x**", reply_markup=None)
+
+    first, second = message.reply_text.await_args_list
+    assert first.args == ("<b>x</b>",) and first.kwargs["parse_mode"] == "HTML"
+    assert second.args == ("**x**",) and "parse_mode" not in second.kwargs
