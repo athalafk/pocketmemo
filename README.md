@@ -220,6 +220,42 @@ It fetches the latest code, then — depending on how you installed — rebuilds
 Docker containers **or** updates the venv, applies any database migrations, and
 restarts the bot. Your `.env` is never touched (it's git-ignored).
 
+Tagged releases (`v1.2.0`) also publish a Docker image to
+`ghcr.io/athalafk/pocketmemo` and a GitHub Release with notes
+([`.github/workflows/release.yml`](.github/workflows/release.yml)).
+
+### Auto-deploy from GitHub (optional, Docker installs)
+
+If you run your own fork, [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+can deploy every push to `main` that passes CI, after you approve it. It connects over
+SSH with a key that can only run [`deploy.sh`](deploy.sh). That script deploys only the
+tested commit, and only if it is on `main`: it fast-forwards, rebuilds, and migrates.
+
+One-time setup:
+
+1. On the server, make the `pocketmemo` checkout track `main`, then create a key that
+   only runs `deploy.sh`:
+
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C pocketmemo-deploy -f pocketmemo-deploy
+   echo "command=\"$PWD/deploy.sh\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $(cat pocketmemo-deploy.pub)" >> ~/.ssh/authorized_keys
+   ssh-keyscan -t ed25519 your.server.example   # output = DEPLOY_KNOWN_HOSTS
+   ```
+
+2. On GitHub, open **Settings → Environments → New environment** and name it
+   `production`. Add yourself under **Required reviewers**, set **Deployment branches**
+   to `main`, then add these environment secrets:
+
+   | Secret | Value |
+   |--------|-------|
+   | `DEPLOY_SSH_KEY` | contents of the private key file `pocketmemo-deploy` |
+   | `DEPLOY_KNOWN_HOSTS` | the `ssh-keyscan` line from step 1 |
+   | `DEPLOY_TARGET` | `user@your.server.example` (or `ssh://user@host:port`) |
+
+   Then delete the private key from the server.
+
+Each green push to `main` then shows a **Review deployments** button in the Actions run.
+
 ## 💻 Local development
 
 ```bash
@@ -241,7 +277,7 @@ pytest
 
 It covers the cosine-distance math, secret encryption, English/Indonesian locale
 parity, settings parsing, the SQLite vector search end-to-end, and applying the Alembic
-migration on SQLite. GitHub Actions runs it on every push and pull request
+migration on SQLite. GitHub Actions runs it, plus a Docker build, on every push and pull request
 (Python 3.11 & 3.12) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## ⚙️ Configuration
