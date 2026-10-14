@@ -10,7 +10,7 @@ from pytz import UnknownTimeZoneError, timezone
 
 BotMode = Literal["polling", "webhook"]
 Language = Literal["en", "id"]
-LLMProvider = Literal["gemini", "openai", "ollama"]
+LLMProvider = Literal["gemini", "openai", "claude", "ollama"]
 LogLevel = Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"]
 RequiredString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
 
     # Ollama (local). Use a vision-capable chat model (e.g. llava) for image Q&A.
+    # Anthropic Claude (chat and vision only; embeddings come from EMBEDDING_PROVIDER).
+    claude_api_key: str = ""
+    claude_chat_model: str = "claude-opus-5-5"
+
     ollama_base_url: str = "http://localhost:11434"
     ollama_chat_model: str = "llama3.1"
     ollama_embedding_model: str = "nomic-embed-text"
@@ -154,8 +158,13 @@ class Settings(BaseSettings):
         provider_models = {
             "gemini": (self.gemini_chat_model, self.gemini_embedding_model),
             "openai": (self.openai_chat_model, self.openai_embedding_model),
+            "claude": (self.claude_chat_model,),
             "ollama": (self.ollama_chat_model, self.ollama_embedding_model),
         }
+        if (self.embedding_provider or self.llm_provider) == "claude":
+            raise ValueError(
+                "Claude has no embeddings API; set EMBEDDING_PROVIDER to gemini, openai, or ollama"
+            )
         if any(not model.strip() for model in provider_models[self.llm_provider]):
             raise ValueError(
                 f"chat and embedding model names are required for {self.llm_provider}"

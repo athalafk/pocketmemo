@@ -9,6 +9,7 @@ import time
 from enum import StrEnum
 from typing import Any
 
+import anthropic
 import httpx
 import openai
 from google.api_core.exceptions import ResourceExhausted
@@ -16,6 +17,7 @@ from google.api_core.exceptions import ResourceExhausted
 from pocketmemo import settings_store
 from pocketmemo.config import get_settings
 from pocketmemo.llm.base import LLMProvider, LLMUnavailableError, Part
+from pocketmemo.llm.claude import ClaudeProvider
 from pocketmemo.llm.gemini import GeminiProvider
 from pocketmemo.llm.ollama import OllamaProvider
 from pocketmemo.llm.openai import OpenAIProvider
@@ -105,17 +107,22 @@ def _make_provider(name: str | None = None) -> LLMProvider:
             embedding_model=_eff("openai_embedding_model", _settings.openai_embedding_model),
             embedding_dim=_settings.embedding_dim,
         )
+    if name == "claude":
+        return ClaudeProvider(
+            api_key=settings_store.get_secret("claude_api_key") or _settings.claude_api_key,
+            chat_model=_eff("claude_chat_model", _settings.claude_chat_model),
+        )
     if name == "ollama":
         return OllamaProvider(
             base_url=_settings.ollama_base_url,
             chat_model=_eff("ollama_chat_model", _settings.ollama_chat_model),
             embedding_model=_eff("ollama_embedding_model", _settings.ollama_embedding_model),
         )
-    raise ValueError(f"Unknown LLM provider: {name!r}. Supported: gemini, openai, ollama.")
+    raise ValueError(f"Unknown LLM provider: {name!r}. Supported: gemini, openai, claude, ollama.")
 
 
 def _is_rate_limit(exc: Exception) -> bool:
-    if isinstance(exc, ResourceExhausted | openai.RateLimitError):
+    if isinstance(exc, ResourceExhausted | openai.RateLimitError | anthropic.RateLimitError):
         return True
     return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429
 
