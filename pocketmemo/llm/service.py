@@ -83,9 +83,13 @@ def effective_provider_name() -> str:
     return (settings_store.get("llm_provider") or _settings.llm_provider or "gemini").lower()
 
 
-def _make_provider() -> LLMProvider:
-    """Instantiate the configured LLM backend (DB settings override .env)."""
-    name = effective_provider_name()
+def embedding_provider_name() -> str:
+    return _settings.embedding_provider or _settings.llm_provider
+
+
+def _make_provider(name: str | None = None) -> LLMProvider:
+    """Instantiate an LLM backend, by default the chat provider (DB settings override .env)."""
+    name = name or effective_provider_name()
     if name == "gemini":
         return GeminiProvider(
             api_key=settings_store.get_secret("gemini_api_key") or _settings.gemini_api_key,
@@ -158,6 +162,7 @@ class LLMService:
 
     def __init__(self) -> None:
         self._provider: LLMProvider | None = None
+        self._embedder: LLMProvider | None = None
 
     @property
     def provider(self) -> LLMProvider:
@@ -168,9 +173,21 @@ class LLMService:
             self._provider = _GuardedProvider(inner, name, timeout=_settings.llm_timeout_seconds)
         return self._provider
 
+    @property
+    def embedder(self) -> LLMProvider:
+        """Fixed embedding backend, independent of the chat provider chosen in /llm."""
+        if self._embedder is None:
+            name = embedding_provider_name()
+            logger.info("Using embedding provider=%s", name)
+            self._embedder = _GuardedProvider(
+                _make_provider(name), name, timeout=_settings.llm_timeout_seconds
+            )
+        return self._embedder
+
     def reconfigure(self) -> None:
-        """Drop the cached provider so it is rebuilt from current settings."""
+        """Drop the cached providers so they are rebuilt from current settings (e.g. a new key)."""
         self._provider = None
+        self._embedder = None
 
     async def classify_intent(self, user_message: str) -> dict[str, Any]:
         """Classify a message into an intent + params. Falls back to general_chat."""
@@ -245,11 +262,11 @@ class LLMService:
 
     async def embed(self, text: str) -> list[float]:
         """Embedding for a document/note."""
-        return await self.provider.embed(text, task_type="retrieval_document")
+        return await self.embedder.embed(text, task_type="retrieval_document")
 
     async def embed_query(self, text: str) -> list[float]:
         """Embedding optimised for a search query."""
-        return await self.provider.embed(text, task_type="retrieval_query")
+        return await self.embedder.embed(text, task_type="retrieval_query")
 
     async def list_models(self) -> list[str]:
         """Chat models available on the current backend (best-effort)."""

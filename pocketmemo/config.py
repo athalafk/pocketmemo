@@ -47,6 +47,10 @@ class Settings(BaseSettings):
 
     # LLM provider: Gemini, OpenAI-compatible, or Ollama.
     llm_provider: LLMProvider = "gemini"
+    # Provider for embeddings (semantic search). Defaults to LLM_PROVIDER and, unlike
+    # the chat provider, cannot be changed from /llm: vectors from different models
+    # can't be compared, so changing it means re-embedding saved data.
+    embedding_provider: LLMProvider | None = None
 
     # LLM (Google Gemini). Required only when LLM_PROVIDER=gemini.
     gemini_api_key: str = ""
@@ -95,10 +99,11 @@ class Settings(BaseSettings):
     # Access control: comma-separated Telegram user IDs (empty = open to all).
     allowed_user_ids: str = ""
 
-    @field_validator("bot_mode", "default_language", "llm_provider", mode="before")
+    @field_validator("bot_mode", "default_language", "llm_provider", "embedding_provider", mode="before")
     @classmethod
     def _normalize_choice(cls, value: object) -> object:
-        return value.strip().lower() if isinstance(value, str) else value
+        # An empty value (e.g. "EMBEDDING_PROVIDER=" in .env) means "not set".
+        return (value.strip().lower() or None) if isinstance(value, str) else value
 
     @field_validator("log_level", mode="before")
     @classmethod
