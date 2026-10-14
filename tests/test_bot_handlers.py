@@ -193,6 +193,35 @@ async def test_photo_question_is_answered_without_saving(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("caption", ["what is in this picture?", None])
+async def test_sent_photo_is_remembered_for_follow_up_questions(monkeypatch, caption):
+    update = _photo_update(caption)
+    context = _context()
+    telegram_file = SimpleNamespace(download_as_bytearray=AsyncMock(return_value=bytearray(b"img")))
+    context.bot.get_file = AsyncMock(return_value=telegram_file)
+    save_turn = AsyncMock()
+    monkeypatch.setattr(
+        messages, "get_or_create_user", AsyncMock(return_value=SimpleNamespace(id=7, language="en"))
+    )
+    monkeypatch.setattr(messages.llm, "classify_intent", AsyncMock(return_value={
+        "intent": Intent.GENERAL_CHAT.value, "params": {},
+    }))
+    monkeypatch.setattr(messages.llm, "answer_about_media", AsyncMock(return_value="A cat"))
+    monkeypatch.setattr(messages.file_manager, "save_file", AsyncMock(return_value=("Saved", 9)))
+    monkeypatch.setattr(messages.note, "get_recent_notes", AsyncMock(return_value=[]))
+    monkeypatch.setattr(messages.folder, "get_folders", AsyncMock(return_value=[]))
+    monkeypatch.setattr(messages.conversation, "save_turn", save_turn)
+
+    await handlers.handle_attachment(update, context)
+
+    media = context.user_data["recent_media"]
+    assert (media["file_id"], media["mime"]) == ("photo-id", "image/jpeg")
+    # The agent sees the image in its recent conversation either way.
+    assert save_turn.await_args_list[0].args[1] == "user"
+    assert save_turn.await_args_list[0].args[2].startswith("[sent an image]")
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("has_notes", "has_folders", "callbacks_expected"),
     [
@@ -215,6 +244,7 @@ async def test_saved_file_offers_matching_organize_buttons(
     monkeypatch.setattr(
         messages.folder, "get_folders", AsyncMock(return_value=["f"] if has_folders else [])
     )
+    monkeypatch.setattr(messages.conversation, "save_turn", AsyncMock())
 
     await handlers.handle_attachment(update, context)
 

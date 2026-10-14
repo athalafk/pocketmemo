@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from pocketmemo.agent.core import AgentContext, AgentTool, ToolInputError, ToolResult
+from pocketmemo.llm import llm
 from pocketmemo.services import file_manager, memory, note, reminder
+
+# How long a sent image stays available for follow-up questions.
+RECENT_MEDIA_MAX_AGE_SECONDS = 30 * 60
 
 
 def _required_text(arguments: dict[str, Any], key: str) -> str:
@@ -125,6 +130,18 @@ async def _update_reminder(ctx: AgentContext, arguments: dict[str, Any]) -> Tool
     return ToolResult(observation=reply, direct=True, reply=reply)
 
 
+async def _ask_about_recent_image(ctx: AgentContext, arguments: dict[str, Any]) -> ToolResult:
+    question = _required_text(arguments, "question")
+    user_data = getattr(ctx.telegram_context, "user_data", None) or {}
+    media = user_data.get("recent_media")
+    if not media or time.time() - media["at"] > RECENT_MEDIA_MAX_AGE_SECONDS:
+        return ToolResult(observation="No image or PDF was sent in this chat recently.")
+    telegram_file = await ctx.telegram_context.bot.get_file(media["file_id"])
+    data = bytes(await telegram_file.download_as_bytearray())
+    answer = await llm.answer_about_media(data, media["mime"], question)
+    return ToolResult(observation=answer, direct=True, reply=answer)
+
+
 def build_tools() -> dict[str, AgentTool]:
     """Build the fixed tool allowlist. No arbitrary code or shell tool is exposed."""
     text = {"type": "string"}
@@ -201,6 +218,16 @@ def build_tools() -> dict[str, AgentTool]:
             description="Change an existing reminder's schedule, message, place, or link.",
             parameters=_object_schema({"request": text}, ["request"]),
             execute=_update_reminder,
+        ),
+        AgentTool(
+            name="ask_about_recent_image",
+            description=(
+                "Look again at the image or PDF the user sent most recently in this chat "
+                "and answer a follow-up question about it (e.g. who is this, what brand, "
+                "what does the text say). Nothing is saved."
+            ),
+            parameters=_object_schema({"question": text}, ["question"]),
+            execute=_ask_about_recent_image,
         ),
     ]
     return {tool.name: tool for tool in tools}
