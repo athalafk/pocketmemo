@@ -7,7 +7,7 @@ import json
 import logging
 import time
 from enum import StrEnum
-from typing import Any
+from typing import Any, get_args
 
 import anthropic
 import httpx
@@ -15,11 +15,11 @@ import openai
 from google.api_core.exceptions import ResourceExhausted
 
 from pocketmemo import settings_store
+from pocketmemo.config import LLMProvider as LLMProviderName
 from pocketmemo.config import get_settings
 from pocketmemo.llm.base import LLMProvider, LLMUnavailableError, Part
 from pocketmemo.llm.claude import ClaudeProvider
 from pocketmemo.llm.gemini import GeminiProvider
-from pocketmemo.llm.ollama import OllamaProvider
 from pocketmemo.llm.openai import OpenAIProvider
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,9 @@ def _eff(key: str, env_default) -> str:
 
 
 def effective_provider_name() -> str:
-    return (settings_store.get("llm_provider") or _settings.llm_provider or "gemini").lower()
+    """Chat provider: /llm choice if still supported (e.g. not a removed one), else .env."""
+    stored = (settings_store.get("llm_provider") or "").lower()
+    return stored if stored in get_args(LLMProviderName) else _settings.llm_provider
 
 
 def embedding_provider_name() -> str:
@@ -112,13 +114,7 @@ def _make_provider(name: str | None = None) -> LLMProvider:
             api_key=settings_store.get_secret("claude_api_key") or _settings.claude_api_key,
             chat_model=_eff("claude_chat_model", _settings.claude_chat_model),
         )
-    if name == "ollama":
-        return OllamaProvider(
-            base_url=_settings.ollama_base_url,
-            chat_model=_eff("ollama_chat_model", _settings.ollama_chat_model),
-            embedding_model=_eff("ollama_embedding_model", _settings.ollama_embedding_model),
-        )
-    raise ValueError(f"Unknown LLM provider: {name!r}. Supported: gemini, openai, claude, ollama.")
+    raise ValueError(f"Unknown LLM provider: {name!r}. Supported: gemini, openai, claude.")
 
 
 def _is_rate_limit(exc: Exception) -> bool:

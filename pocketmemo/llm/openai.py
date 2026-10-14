@@ -1,8 +1,8 @@
 """OpenAI-compatible LLM provider.
 
 Works with the OpenAI API and any service that speaks the same protocol —
-OpenAI, Groq, OpenRouter, Together, DeepSeek, Mistral, LM Studio, vLLM, and even
-Ollama (via its /v1 endpoint). Configure the base URL, key, and model in .env.
+OpenAI, Groq, OpenRouter, Together, DeepSeek, Mistral, LM Studio, and vLLM.
+Configure the base URL, key, and model in .env.
 
 Note: the embedding dimension must match the database (768). OpenAI's
 text-embedding-3-* models support a ``dimensions`` parameter; for backends that

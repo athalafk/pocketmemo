@@ -2,7 +2,7 @@
 
 The harness deliberately uses structured JSON decisions instead of a provider's
 native function-calling API. PocketMemo can therefore keep the same agent loop
-when the user switches between Gemini, an OpenAI-compatible backend, and Ollama.
+when the user switches between Gemini, an OpenAI-compatible backend, and Claude.
 """
 
 from __future__ import annotations

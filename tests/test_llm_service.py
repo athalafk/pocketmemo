@@ -154,6 +154,17 @@ class EmbeddingProviderTests(IsolatedAsyncioTestCase):
 
     async def test_embedding_provider_setting_wins(self) -> None:
         embedded, _ = await self._embed_and_chat_providers(
-            {"llm_provider": "gemini", "embedding_provider": "ollama"}
+            {"llm_provider": "gemini", "embedding_provider": "openai"}
         )
-        self.assertEqual(embedded, "ollama")
+        self.assertEqual(embedded, "openai")
+
+
+class StoredProviderTests(IsolatedAsyncioTestCase):
+    async def test_unsupported_stored_provider_falls_back_to_env(self) -> None:
+        from unittest.mock import patch
+
+        from pocketmemo.llm import service
+
+        # e.g. "ollama" saved by /llm before that provider was removed
+        with patch.object(service.settings_store, "get", {"llm_provider": "ollama"}.get):
+            self.assertEqual(service.effective_provider_name(), service._settings.llm_provider)

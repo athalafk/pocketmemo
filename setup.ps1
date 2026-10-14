@@ -38,23 +38,16 @@ $TG_UID  = Ask "Your Telegram user ID (ALLOWED_USER_IDS; blank = open)" ""
 Write-Host "`n2) Language" -ForegroundColor Cyan
 $LANGV = Ask "Default language (en/id)" "en"
 
-Write-Host "`n3) LLM provider (gemini / openai / ollama)" -ForegroundColor Cyan
+Write-Host "`n3) LLM provider (gemini / openai)" -ForegroundColor Cyan
 $PROV = Ask "Provider" "gemini"
 
-if ($INSTALL -eq "docker") { $DEF_OLLAMA = "http://host.docker.internal:11434" } else { $DEF_OLLAMA = "http://localhost:11434" }
 $GEMINI_KEY = ""; $OPENAI_KEY = ""; $OPENAI_URL = "https://api.openai.com/v1"; $OPENAI_MODEL = "gpt-4o-mini"
-$OLLAMA_URL = $DEF_OLLAMA; $OLLAMA_MODEL = "llama3.1"; $OLLAMA_EMB = "nomic-embed-text"
 switch ($PROV) {
     "gemini" { $GEMINI_KEY = Ask "Gemini API key (blank to set later with /llm)" "" }
     "openai" {
         $OPENAI_KEY = Ask "API key (blank to set later)" ""
         $OPENAI_URL = Ask "Base URL" $OPENAI_URL
         $OPENAI_MODEL = Ask "Chat model" $OPENAI_MODEL
-    }
-    "ollama" {
-        $OLLAMA_URL = Ask "Ollama base URL" $OLLAMA_URL
-        $OLLAMA_MODEL = Ask "Chat model" $OLLAMA_MODEL
-        $OLLAMA_EMB = Ask "Embedding model (must be 768-dim)" $OLLAMA_EMB
     }
 }
 
@@ -105,10 +98,6 @@ OPENAI_API_KEY=$OPENAI_KEY
 OPENAI_BASE_URL=$OPENAI_URL
 OPENAI_CHAT_MODEL=$OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-
-OLLAMA_BASE_URL=$OLLAMA_URL
-OLLAMA_CHAT_MODEL=$OLLAMA_MODEL
-OLLAMA_EMBEDDING_MODEL=$OLLAMA_EMB
 
 $DB_BLOCK
 
