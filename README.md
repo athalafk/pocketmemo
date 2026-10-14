@@ -222,7 +222,17 @@ restarts the bot. Your `.env` is never touched (it's git-ignored).
 
 Tagged releases (`v1.2.0`) also publish a Docker image to
 `ghcr.io/athalafk/pocketmemo` and a GitHub Release with notes
-([`.github/workflows/release.yml`](.github/workflows/release.yml)).
+([`.github/workflows/release.yml`](.github/workflows/release.yml)). Each release is
+tagged with its full version and its minor line, e.g. `1.2.0` and `1.2` (there is no
+`latest` tag). To run the published image instead of building from source, replace
+`build: .` in `docker-compose.yml` with:
+
+```yaml
+    image: ghcr.io/athalafk/pocketmemo:1.2   # follows 1.2.x patch releases
+```
+
+Then update with `docker compose pull && docker compose up -d` followed by
+`docker compose exec bot alembic upgrade head`.
 
 ### Auto-deploy from GitHub (optional, Docker installs)
 
