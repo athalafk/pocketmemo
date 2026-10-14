@@ -1,7 +1,7 @@
 """Characterization tests for Telegram handler wiring and routing."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
@@ -271,6 +271,63 @@ async def test_pending_reminder_draft_takes_priority_over_agent(monkeypatch):
 
     run_agent.assert_not_awaited()
     create_reminder.assert_awaited_once_with(update, context, user, "call my friend tomorrow")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("key", "value", "target", "attr", "args"),
+    [
+        ("pending_edit", 5, "reminder", "update_reminder_by_id", (5, "new time")),
+        ("pending_note_edit", 3, "note", "update_note_by_id", (3, "new time")),
+        (
+            "reminder_addfield", {"id": 5, "field": "link"},
+            "reminder", "set_reminder_field", (5, "link", "new time"),
+        ),
+        ("pending_newfolder", "note", "folder", "create_folder", ("new time", "note")),
+    ],
+)
+async def test_pending_input_is_consumed_before_agent(
+    monkeypatch, key, value, target, attr, args
+):
+    update = _message_update("new time")
+    context = _context()
+    context.user_data[key] = value
+    user = SimpleNamespace(id=7, language="en")
+    run_agent = AsyncMock()
+    call = AsyncMock(return_value="done")
+    monkeypatch.setattr(messages.settings, "agent_enabled", True)
+    monkeypatch.setattr(messages, "get_or_create_user", AsyncMock(return_value=user))
+    monkeypatch.setattr(messages.pocketmemo_agent, "run", run_agent)
+    monkeypatch.setattr(getattr(messages, target), attr, call)
+
+    await handlers.handle_text(update, context)
+
+    run_agent.assert_not_awaited()
+    call.assert_awaited_once_with(user, *args)
+    update.message.reply_text.assert_awaited_once_with("done")
+    assert key not in context.user_data
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("secret", [True, False])
+async def test_pending_setting_saves_value_and_reconfigures(monkeypatch, secret):
+    update = _message_update(" value ")
+    context = _context()
+    context.user_data["pending_setting"] = {"skey": "gemini_api_key", "secret": secret}
+    monkeypatch.setattr(
+        messages, "get_or_create_user", AsyncMock(return_value=SimpleNamespace(id=7, language="en"))
+    )
+    set_secret, set_value, reconfigure = AsyncMock(), AsyncMock(), MagicMock()
+    monkeypatch.setattr(messages.settings_store, "set_secret", set_secret)
+    monkeypatch.setattr(messages.settings_store, "set_value", set_value)
+    monkeypatch.setattr(messages.llm, "reconfigure", reconfigure)
+
+    await handlers.handle_text(update, context)
+
+    (set_secret if secret else set_value).assert_awaited_once_with("gemini_api_key", "value")
+    (set_value if secret else set_secret).assert_not_awaited()
+    reconfigure.assert_called_once_with()
+    assert context.user_data == {}
 
 
 @pytest.mark.asyncio

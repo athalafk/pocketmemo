@@ -330,17 +330,6 @@ def format_reminder_line(rem: Reminder, user: User) -> str:
     )
 
 
-async def list_reminders(user: User) -> str:
-    """Active reminders as plain text (fallback without inline keyboard)."""
-    rows = await get_active_reminders(user)
-    if not rows:
-        return t("reminder_none", user.language)
-    lines = [t("reminder_list_header", user.language)]
-    lines.extend(format_reminder_line(r, user) for r in rows)
-    lines.append("\n" + t("reminder_list_footer", user.language))
-    return "\n".join(lines)
-
-
 async def cancel_reminder(user: User, reminder_id: int) -> str:
     async with SessionLocal() as session:
         rem = (

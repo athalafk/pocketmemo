@@ -13,6 +13,7 @@ from pocketmemo import settings_store
 from pocketmemo.agent import AgentContext
 from pocketmemo.agent.runtime import pocketmemo_agent
 from pocketmemo.bot.common import general_chat_system_prompt, get_or_create_user
+from pocketmemo.bot.views import _reminder_extras_keyboard
 from pocketmemo.config import get_settings
 from pocketmemo.i18n import t
 from pocketmemo.llm import Intent, llm
@@ -50,20 +51,7 @@ async def _handle_create_reminder(
         return
 
     if reminder_id:
-        keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        t("reminder_btn_addloc", language),
-                        callback_data=f"raddloc:{reminder_id}",
-                    ),
-                    InlineKeyboardButton(
-                        t("reminder_btn_addlink", language),
-                        callback_data=f"raddlink:{reminder_id}",
-                    ),
-                ]
-            ]
-        )
+        keyboard = _reminder_extras_keyboard(reminder_id, language)
         await update.message.reply_text(reply, reply_markup=keyboard)
     else:
         await update.message.reply_text(reply)
@@ -72,20 +60,33 @@ async def _handle_create_reminder(
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Route text through pending flows, the agent, or the legacy intent router."""
+    """Route text through pending input, the agent, or the legacy intent router."""
     user = await get_or_create_user(update)
     if user is None:
         await update.message.reply_text(t("access_denied", settings.default_language))
         return
-    language = user.language
     text = update.message.text or ""
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id,
         action=ChatAction.TYPING,
     )
 
+    if await _handle_pending_input(update, context, user, text):
+        return
+    if settings.agent_enabled and await _handle_with_agent(update, context, user, text):
+        return
+    await _handle_legacy_intent(update, context, user, text)
+
+
+async def _handle_pending_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, user: User, text: str
+) -> bool:
+    """Finish a multi-step flow a button started (edits, extras, folders, /llm values)."""
+    language = user.language
     user_data = context.user_data
-    if user_data is not None and user_data.get("pending_edit"):
+    if user_data is None:
+        return False
+    if user_data.get("pending_edit"):
         reminder_id = user_data.pop("pending_edit")
         try:
             reply = await reminder.update_reminder_by_id(user, int(reminder_id), text)
@@ -95,9 +96,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             logger.exception("Failed to update reminder #%s", reminder_id)
             reply = t("error_generic", language)
         await update.message.reply_text(reply)
-        return
+        return True
 
-    if user_data is not None and user_data.get("pending_note_edit"):
+    if user_data.get("pending_note_edit"):
         note_id = user_data.pop("pending_note_edit")
         try:
             reply = await note.update_note_by_id(user, int(note_id), text)
@@ -107,14 +108,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             logger.exception("Failed to update note #%s", note_id)
             reply = t("error_generic", language)
         await update.message.reply_text(reply)
-        return
+        return True
 
-    if user_data is not None and user_data.get("reminder_draft"):
+    if user_data.get("reminder_draft"):
         combined = f"{user_data.pop('reminder_draft')} {text}"
         await _handle_create_reminder(update, context, user, combined)
-        return
+        return True
 
-    if user_data is not None and user_data.get("reminder_addfield"):
+    if user_data.get("reminder_addfield"):
         info = user_data.pop("reminder_addfield")
         reply = await reminder.set_reminder_field(
             user,
@@ -123,15 +124,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             text,
         )
         await update.message.reply_text(reply)
-        return
+        return True
 
-    if user_data is not None and user_data.get("pending_newfolder"):
+    if user_data.get("pending_newfolder"):
         kind = user_data.pop("pending_newfolder")
         kind = kind if kind in ("file", "note") else "file"
         await update.message.reply_text(await folder.create_folder(user, text, kind))
-        return
+        return True
 
-    if user_data is not None and user_data.get("pending_setting"):
+    if user_data.get("pending_setting"):
         info = user_data.pop("pending_setting")
         value = text.strip()
         if info.get("secret"):
@@ -142,61 +143,56 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             reply = t("llm_setting_saved", language)
         llm.reconfigure()
         await update.message.reply_text(reply)
-        return
+        return True
 
-    if settings.agent_enabled:
-        try:
-            history = await conversation.get_recent_history(user.id)
-            agent_result = await pocketmemo_agent.run(
-                message=text,
-                history=history,
-                language=language,
-                context=AgentContext(
-                    user=user,
-                    update=update,
-                    telegram_context=context,
-                ),
-            )
-        except ResourceExhausted:
-            await update.message.reply_text(t("quota_exceeded", language))
-            return
-        except Exception:
-            logger.exception("Agent harness failed for user %s; using legacy router", user.id)
-        else:
-            if agent_result.handled:
-                needs_time = bool(agent_result.metadata.get("reminder_needs_time"))
-                reminder_id = agent_result.metadata.get("reminder_id")
-                if needs_time and user_data is not None:
-                    user_data["reminder_draft"] = agent_result.metadata.get(
-                        "reminder_request", text
-                    )
+    return False
 
-                reply_markup = None
-                if reminder_id:
-                    reply_markup = InlineKeyboardMarkup(
-                        [
-                            [
-                                InlineKeyboardButton(
-                                    t("reminder_btn_addloc", language),
-                                    callback_data=f"raddloc:{reminder_id}",
-                                ),
-                                InlineKeyboardButton(
-                                    t("reminder_btn_addlink", language),
-                                    callback_data=f"raddlink:{reminder_id}",
-                                ),
-                            ]
-                        ]
-                    )
 
-                if agent_result.reply:
-                    if not needs_time:
-                        await conversation.save_turn(user.id, "user", text)
-                        await conversation.save_turn(user.id, "assistant", agent_result.reply)
-                    await update.message.reply_text(
-                        agent_result.reply, reply_markup=reply_markup
-                    )
-                return
+async def _handle_with_agent(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, user: User, text: str
+) -> bool:
+    """Let the agent answer; return False to fall back to the legacy router."""
+    language = user.language
+    try:
+        history = await conversation.get_recent_history(user.id)
+        agent_result = await pocketmemo_agent.run(
+            message=text,
+            history=history,
+            language=language,
+            context=AgentContext(
+                user=user,
+                update=update,
+                telegram_context=context,
+            ),
+        )
+    except ResourceExhausted:
+        await update.message.reply_text(t("quota_exceeded", language))
+        return True
+    except Exception:
+        logger.exception("Agent harness failed for user %s; using legacy router", user.id)
+        return False
+    if not agent_result.handled:
+        return False
+    needs_time = bool(agent_result.metadata.get("reminder_needs_time"))
+    reminder_id = agent_result.metadata.get("reminder_id")
+    if needs_time and context.user_data is not None:
+        context.user_data["reminder_draft"] = agent_result.metadata.get("reminder_request", text)
 
+    reply_markup = _reminder_extras_keyboard(reminder_id, language) if reminder_id else None
+
+    if agent_result.reply:
+        if not needs_time:
+            await conversation.save_turn(user.id, "user", text)
+            await conversation.save_turn(user.id, "assistant", agent_result.reply)
+        await update.message.reply_text(agent_result.reply, reply_markup=reply_markup)
+    return True
+
+
+async def _handle_legacy_intent(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, user: User, text: str
+) -> None:
+    """Classify one intent and dispatch it to a service."""
+    language = user.language
     result = await llm.classify_intent(text)
     intent = result["intent"]
     if intent in (Intent.SET_REMINDER.value, Intent.CREATE_EVENT.value):
@@ -256,6 +252,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await conversation.save_turn(user.id, "user", text)
         await conversation.save_turn(user.id, "assistant", reply)
         await update.message.reply_text(reply)
+
 
 
 async def handle_attachment(
