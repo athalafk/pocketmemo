@@ -158,6 +158,75 @@ async def test_voice_attachment_is_rejected_without_downloading(monkeypatch):
     get_file.assert_not_awaited()
 
 
+def _photo_update(caption: str | None):
+    update = _message_update("")
+    update.message.caption = caption
+    update.message.photo = [SimpleNamespace(file_id="photo-id", file_size=10)]
+    return update
+
+
+@pytest.mark.asyncio
+async def test_photo_question_is_answered_without_saving(monkeypatch):
+    update = _photo_update("what is in this picture?")
+    context = _context()
+    telegram_file = SimpleNamespace(download_as_bytearray=AsyncMock(return_value=bytearray(b"img")))
+    context.bot.get_file = AsyncMock(return_value=telegram_file)
+    user = SimpleNamespace(id=7, language="en")
+    answer = AsyncMock(return_value="A cat")
+    save_file = AsyncMock()
+    save_turn = AsyncMock()
+    monkeypatch.setattr(messages, "get_or_create_user", AsyncMock(return_value=user))
+    monkeypatch.setattr(messages.llm, "classify_intent", AsyncMock(return_value={
+        "intent": Intent.GENERAL_CHAT.value, "params": {},
+    }))
+    monkeypatch.setattr(messages.llm, "answer_about_media", answer)
+    monkeypatch.setattr(messages.file_manager, "save_file", save_file)
+    monkeypatch.setattr(messages.conversation, "save_turn", save_turn)
+
+    await handlers.handle_attachment(update, context)
+
+    answer.assert_awaited_once_with(b"img", "image/jpeg", "what is in this picture?")
+    save_file.assert_not_awaited()
+    update.message.reply_text.assert_awaited_once_with("A cat")
+    assert save_turn.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("has_notes", "has_folders", "callbacks_expected"),
+    [
+        (True, True, ["attachlist:9", "movefile:9", "noattach"]),
+        (False, True, ["movefile:9", "noattach"]),
+        (False, False, None),
+    ],
+)
+async def test_saved_file_offers_matching_organize_buttons(
+    monkeypatch, has_notes, has_folders, callbacks_expected
+):
+    update = _photo_update(None)
+    context = _context()
+    user = SimpleNamespace(id=7, language="en")
+    monkeypatch.setattr(messages, "get_or_create_user", AsyncMock(return_value=user))
+    monkeypatch.setattr(messages.file_manager, "save_file", AsyncMock(return_value=("Saved", 9)))
+    monkeypatch.setattr(
+        messages.note, "get_recent_notes", AsyncMock(return_value=["n"] if has_notes else [])
+    )
+    monkeypatch.setattr(
+        messages.folder, "get_folders", AsyncMock(return_value=["f"] if has_folders else [])
+    )
+
+    await handlers.handle_attachment(update, context)
+
+    args = update.message.reply_text.await_args
+    if callbacks_expected is None:
+        assert args.args == ("Saved",)
+        assert "reply_markup" not in args.kwargs
+    else:
+        assert args.args[0].startswith("Saved\n\n")
+        rows = args.kwargs["reply_markup"].inline_keyboard
+        assert [row[0].callback_data for row in rows] == callbacks_expected
+
+
 @pytest.mark.asyncio
 async def test_edit_callback_starts_pending_reminder_edit(monkeypatch):
     query = SimpleNamespace(

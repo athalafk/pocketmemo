@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from google.api_core.exceptions import ResourceExhausted
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
@@ -13,7 +13,7 @@ from pocketmemo import settings_store
 from pocketmemo.agent import AgentContext
 from pocketmemo.agent.runtime import pocketmemo_agent
 from pocketmemo.bot.common import general_chat_system_prompt, get_or_create_user
-from pocketmemo.bot.views import _reminder_extras_keyboard
+from pocketmemo.bot.views import _file_organize_keyboard, _reminder_extras_keyboard
 from pocketmemo.config import get_settings
 from pocketmemo.i18n import t
 from pocketmemo.llm import Intent, llm
@@ -294,25 +294,7 @@ async def handle_attachment(
     if caption and media_file_id and is_visual:
         classification = await llm.classify_intent(caption)
         if classification["intent"] == Intent.GENERAL_CHAT.value:
-            await context.bot.send_chat_action(
-                chat_id=update.effective_chat.id,
-                action=ChatAction.TYPING,
-            )
-            try:
-                telegram_file = await context.bot.get_file(media_file_id)
-                data = bytes(await telegram_file.download_as_bytearray())
-                file_manager.ensure_file_size_allowed(len(data))
-                answer = await llm.answer_about_media(data, media_mime, caption)
-            except file_manager.FileTooLargeError as exc:
-                answer = t("file_too_large", language, max_mb=exc.max_size_mb)
-            except ResourceExhausted:
-                answer = t("quota_exceeded", language)
-            except Exception:
-                logger.exception("Vision Q&A failed for user %s", user.id)
-                answer = t("error_generic", language)
-            await message.reply_text(answer)
-            await conversation.save_turn(user.id, "user", f"[sent an image] {caption}")
-            await conversation.save_turn(user.id, "assistant", answer)
+            await _answer_about_media(update, context, user, media_file_id, media_mime, caption)
             return
 
     await context.bot.send_chat_action(
@@ -335,32 +317,43 @@ async def handle_attachment(
         has_notes = bool(await note.get_recent_notes(user, limit=1))
         has_folders = bool(await folder.get_folders(user))
         if has_notes or has_folders:
-            rows = []
-            if has_notes:
-                rows.append(
-                    [
-                        InlineKeyboardButton(
-                            t("note_btn_choosenote", language),
-                            callback_data=f"attachlist:{stored_file_id}",
-                        )
-                    ]
-                )
-            if has_folders:
-                rows.append(
-                    [
-                        InlineKeyboardButton(
-                            t("file_btn_putfolder", language),
-                            callback_data=f"movefile:{stored_file_id}",
-                        )
-                    ]
-                )
-            rows.append(
-                [InlineKeyboardButton(t("btn_done", language), callback_data="noattach")]
-            )
             await message.reply_text(
                 reply + "\n\n" + t("file_organize_offer", language),
-                reply_markup=InlineKeyboardMarkup(rows),
+                reply_markup=_file_organize_keyboard(
+                    stored_file_id, language, has_notes, has_folders
+                ),
             )
             return
 
     await message.reply_text(reply)
+
+
+async def _answer_about_media(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+    media_file_id: str,
+    media_mime: str,
+    caption: str,
+) -> None:
+    """Answer the caption's question about a photo or PDF without storing it."""
+    language = user.language
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id,
+        action=ChatAction.TYPING,
+    )
+    try:
+        telegram_file = await context.bot.get_file(media_file_id)
+        data = bytes(await telegram_file.download_as_bytearray())
+        file_manager.ensure_file_size_allowed(len(data))
+        answer = await llm.answer_about_media(data, media_mime, caption)
+    except file_manager.FileTooLargeError as exc:
+        answer = t("file_too_large", language, max_mb=exc.max_size_mb)
+    except ResourceExhausted:
+        answer = t("quota_exceeded", language)
+    except Exception:
+        logger.exception("Vision Q&A failed for user %s", user.id)
+        answer = t("error_generic", language)
+    await update.message.reply_text(answer)
+    await conversation.save_turn(user.id, "user", f"[sent an image] {caption}")
+    await conversation.save_turn(user.id, "assistant", answer)
