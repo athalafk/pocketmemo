@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
+from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 from pocketmemo.agent.core import AgentResult
 from pocketmemo.bot import callbacks, commands, common, handlers, messages
@@ -19,9 +19,10 @@ def legacy_router_by_default(monkeypatch):
 class FakeApplication:
     def __init__(self) -> None:
         self.handlers = []
+        self.early_handlers = []
 
-    def add_handler(self, handler) -> None:
-        self.handlers.append(handler)
+    def add_handler(self, handler, group: int = 0) -> None:
+        (self.early_handlers if group < 0 else self.handlers).append(handler)
 
 
 def _message_update(text: str = "remember my parking spot"):
@@ -605,3 +606,44 @@ async def test_unavailable_llm_replies_without_legacy_fallback(monkeypatch, key)
 
     classify.assert_not_awaited()
     update.message.reply_text.assert_awaited_once_with(messages.t(key, "en"))
+
+
+async def test_button_press_cancels_half_finished_text_input(monkeypatch):
+    # /llm -> Model failed to list models, so the bot waited for a typed model name;
+    # the user then picked a model from a list instead. The next chat message must
+    # not be swallowed as a model name.
+    update, query = _callback_update("pickmodel:0")
+    context = SimpleNamespace(user_data={
+        "pending_setting": {"skey": "ollama_chat_model", "secret": False},
+        "model_pick": {"provider": "gemini", "models": ["gemini-x"]},
+    })
+    monkeypatch.setattr(
+        callbacks, "_get_or_create_user", AsyncMock(return_value=SimpleNamespace(id=7, language="en"))
+    )
+    monkeypatch.setattr(
+        callbacks, "_settings", SimpleNamespace(allowed_user_ids_set={7}, default_language="en")
+    )
+    set_value = AsyncMock()
+    monkeypatch.setattr(callbacks.settings_store, "set_value", set_value)
+    monkeypatch.setattr(callbacks.llm, "reconfigure", MagicMock())
+    monkeypatch.setattr(
+        callbacks, "_llm_settings_view", AsyncMock(return_value=("view", None))
+    )
+
+    await callbacks.on_callback(update, context)
+
+    set_value.assert_awaited_once_with("gemini_chat_model", "gemini-x")
+    assert "pending_setting" not in context.user_data
+
+
+@pytest.mark.asyncio
+async def test_command_cancels_half_finished_text_input():
+    application = FakeApplication()
+    handlers.register_handlers(application)
+    [early] = application.early_handlers
+    context = SimpleNamespace(user_data={"pending_note_edit": 3, "model_pick": {}})
+
+    assert early.filters is filters.COMMAND
+    await early.callback(SimpleNamespace(), context)
+
+    assert context.user_data == {"model_pick": {}}

@@ -6,6 +6,7 @@ import logging
 
 from sqlalchemy import select
 from telegram import Update
+from telegram.ext import ContextTypes
 
 from pocketmemo.config import get_settings
 from pocketmemo.database import SessionLocal
@@ -14,6 +15,30 @@ from pocketmemo.models import User
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+# user_data keys that make the next text message an answer to a bot prompt
+# (edit a reminder/note, add a reminder detail, name a folder, set an /llm value).
+PENDING_INPUT_KEYS = (
+    "pending_edit",
+    "pending_note_edit",
+    "reminder_draft",
+    "reminder_addfield",
+    "pending_newfolder",
+    "pending_setting",
+)
+
+
+def clear_pending_input(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Forget any half-finished text prompt, so the next message is read normally."""
+    if context.user_data is not None:
+        for key in PENDING_INPUT_KEYS:
+            context.user_data.pop(key, None)
+
+
+async def cancel_pending_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler: a command abandons any half-finished text prompt."""
+    clear_pending_input(context)
 
 
 def general_chat_system_prompt(language: str) -> str:
