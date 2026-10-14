@@ -117,3 +117,43 @@ class ProviderConfigTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(captured["base_url"], service._settings.openai_base_url)
 
+
+
+class EmbeddingProviderTests(IsolatedAsyncioTestCase):
+    async def _embed_and_chat_providers(self, env: dict) -> tuple[str, str]:
+        from unittest.mock import patch
+
+        from pocketmemo.llm import service
+
+        class Named:
+            def __init__(self, name: str) -> None:
+                self.name = name
+
+            async def generate(self, parts, **kwargs) -> str:
+                return self.name
+
+            async def embed(self, text, *, task_type) -> list[float]:
+                return [self.name]
+
+        settings = service._settings.model_copy(update=env)
+        with (
+            patch.object(service, "_settings", settings),
+            patch.object(service.settings_store, "get", {"llm_provider": "openai"}.get),
+            patch.object(service, "_make_provider", lambda name=None: Named(name or "openai")),
+        ):
+            llm = LLMService()
+            embedded = (await llm.embed_query("parking"))[0]
+            chatted = await llm.chat("hi")
+        return embedded, chatted
+
+    async def test_switching_chat_provider_in_chat_keeps_install_embeddings(self) -> None:
+        embedded, chatted = await self._embed_and_chat_providers(
+            {"llm_provider": "gemini", "embedding_provider": None}
+        )
+        self.assertEqual((embedded, chatted), ("gemini", "openai"))
+
+    async def test_embedding_provider_setting_wins(self) -> None:
+        embedded, _ = await self._embed_and_chat_providers(
+            {"llm_provider": "gemini", "embedding_provider": "ollama"}
+        )
+        self.assertEqual(embedded, "ollama")

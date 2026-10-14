@@ -33,6 +33,11 @@ def test_choice_values_are_normalized():
     assert settings.log_level == "WARNING"
 
 
+@pytest.mark.parametrize(("value", "expected"), [("", None), (" Gemini ", "gemini")])
+def test_empty_embedding_provider_means_use_llm_provider(value, expected):
+    assert Settings(embedding_provider=value).embedding_provider == expected
+
+
 def test_invalid_allowlist_fails_instead_of_opening_access():
     with pytest.raises(ValidationError, match="numeric Telegram user IDs"):
         Settings(allowed_user_ids="123,not-a-user")

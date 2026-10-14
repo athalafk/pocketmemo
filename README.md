@@ -58,8 +58,9 @@ important ones:
   public HTTPS `WEBHOOK_URL` and a `WEBHOOK_SECRET`.
 - **`ENCRYPTION_KEY`**: encrypts API keys saved through `/llm`. The installer generates
   one. After sending an API key in chat, delete that message.
-- **`EMBEDDING_DIM`** (default `768`): fixed at install. Changing it or the embedding
-  model later means re-embedding your data.
+- **`EMBEDDING_PROVIDER`** (default: `LLM_PROVIDER`) and **`EMBEDDING_DIM`** (default
+  `768`): fixed at install and used for semantic search. Switching the chat provider in
+  `/llm` doesn't change them; changing them later means re-embedding your data.
 
 PocketMemo checks the configuration at startup and stops with a clear error if
 something is wrong.
