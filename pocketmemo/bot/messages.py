@@ -12,7 +12,7 @@ from telegram.ext import ContextTypes
 from pocketmemo import settings_store
 from pocketmemo.agent import AgentContext
 from pocketmemo.agent.runtime import pocketmemo_agent
-from pocketmemo.bot.common import general_chat_system_prompt, get_or_create_user
+from pocketmemo.bot.common import general_chat_system_prompt, get_or_create_user, reply_formatted
 from pocketmemo.bot.views import _file_organize_keyboard, _reminder_extras_keyboard
 from pocketmemo.config import get_settings
 from pocketmemo.i18n import t
@@ -184,7 +184,7 @@ async def _handle_with_agent(
         if not needs_time:
             await conversation.save_turn(user.id, "user", text)
             await conversation.save_turn(user.id, "assistant", agent_result.reply)
-        await update.message.reply_text(agent_result.reply, reply_markup=reply_markup)
+        await reply_formatted(update.message, agent_result.reply, reply_markup=reply_markup)
     return True
 
 
@@ -250,7 +250,7 @@ async def _handle_legacy_intent(
     if reply:
         await conversation.save_turn(user.id, "user", text)
         await conversation.save_turn(user.id, "assistant", reply)
-        await update.message.reply_text(reply)
+        await reply_formatted(update.message, reply)
 
 
 
@@ -362,6 +362,6 @@ async def _answer_about_media(
     except Exception:
         logger.exception("Vision Q&A failed for user %s", user.id)
         answer = t("error_generic", language)
-    await update.message.reply_text(answer)
+    await reply_formatted(update.message, answer)
     await conversation.save_turn(user.id, "user", f"[sent an image] {caption}")
     await conversation.save_turn(user.id, "assistant", answer)
