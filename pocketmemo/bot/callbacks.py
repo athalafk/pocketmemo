@@ -51,6 +51,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         _settings_callback,
         _reminder_callback,
         _note_callback,
+        _note_folder_callback,
+        _note_attachment_callback,
         _memory_callback,
         _file_callback,
     ):
@@ -173,7 +175,89 @@ async def _reminder_callback(
 async def _note_callback(
     query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE, user: User, data: str
 ) -> bool:
-    """Notes, note folders, and files attached to notes."""
+    """View, edit, export, and delete notes."""
+    lang = user.language
+    if data.startswith("delnote:"):
+        nid = data.split(":", 1)[1]
+        if nid.isdigit():
+            await query.edit_message_text(await note.delete_note(user, int(nid)))
+        else:
+            await query.edit_message_text(t("action_unknown", lang))
+    elif data.startswith("ndocx:") or data.startswith("ntxt:"):
+        fmt = "docx" if data.startswith("ndocx:") else "txt"
+        nid = data.split(":", 1)[1]
+        if nid.isdigit():
+            result = await note.export_note(user, int(nid), fmt)
+            if result is None:
+                await query.answer(t("note_not_found", lang, id=nid), show_alert=True)
+            else:
+                path, filename = result
+                with open(path, "rb") as fh:
+                    await context.bot.send_document(query.message.chat.id, document=fh, filename=filename)
+    elif data.startswith("nedit:"):
+        nid = data.split(":", 1)[1]
+        if nid.isdigit():
+            if context.user_data is not None:
+                context.user_data["pending_note_edit"] = int(nid)
+            await query.edit_message_text(t("note_edit_prompt", lang, id=nid))
+        else:
+            await query.edit_message_text(t("action_unknown", lang))
+    elif data.startswith("viewnote:"):
+        nid = data.split(":", 1)[1]
+        if nid.isdigit():
+            res = await note.view_note(context, user, query.message.chat.id, int(nid))
+            if res:
+                await context.bot.send_message(query.message.chat.id, res)
+    else:
+        return False
+    return True
+
+
+async def _note_folder_callback(
+    query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE, user: User, data: str
+) -> bool:
+    """Browse note folders and move notes between them."""
+    lang = user.language
+    if data == "notes_home":
+        text, kb = await _notes_home(user)
+        await query.edit_message_text(text, reply_markup=kb)
+    elif data.startswith("nfolder:"):
+        fid = data.split(":", 1)[1]
+        if fid.isdigit():
+            text, kb = await _note_folder_view(user, int(fid))
+            await query.edit_message_text(text, reply_markup=kb)
+    elif data == "newnotefolder":
+        if context.user_data is not None:
+            context.user_data["pending_newfolder"] = "note"
+        await query.edit_message_text(t("folder_name_ask", lang))
+    elif data.startswith("movenote:"):
+        nid = data.split(":", 1)[1]
+        if nid.isdigit():
+            if not await folder.get_folders(user, "note"):
+                await query.edit_message_text(t("folder_no_folders", lang))
+            else:
+                text, kb = await _note_folder_chooser(user, int(nid))
+                await query.edit_message_text(text, reply_markup=kb)
+    elif data.startswith("movnto:"):
+        parts = data.split(":")
+        if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+            target = None if parts[2] == "0" else int(parts[2])
+            await query.edit_message_text(await folder.move_note(user, int(parts[1]), target))
+        else:
+            await query.edit_message_text(t("action_unknown", lang))
+    elif data.startswith("delnfolder:"):
+        fid = data.split(":", 1)[1]
+        if fid.isdigit():
+            await query.edit_message_text(await folder.delete_folder(user, int(fid)))
+    else:
+        return False
+    return True
+
+
+async def _note_attachment_callback(
+    query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE, user: User, data: str
+) -> bool:
+    """Attach files to notes, OCR them, and detach them."""
     lang = user.language
     if data.startswith("attachlist:"):
         fid = data.split(":", 1)[1]
@@ -213,31 +297,6 @@ async def _note_callback(
             await query.edit_message_text(t("action_unknown", lang))
     elif data == "noattach":
         await query.edit_message_text(t("note_saved_asfile", lang))
-    elif data.startswith("delnote:"):
-        nid = data.split(":", 1)[1]
-        if nid.isdigit():
-            await query.edit_message_text(await note.delete_note(user, int(nid)))
-        else:
-            await query.edit_message_text(t("action_unknown", lang))
-    elif data.startswith("ndocx:") or data.startswith("ntxt:"):
-        fmt = "docx" if data.startswith("ndocx:") else "txt"
-        nid = data.split(":", 1)[1]
-        if nid.isdigit():
-            result = await note.export_note(user, int(nid), fmt)
-            if result is None:
-                await query.answer(t("note_not_found", lang, id=nid), show_alert=True)
-            else:
-                path, filename = result
-                with open(path, "rb") as fh:
-                    await context.bot.send_document(query.message.chat.id, document=fh, filename=filename)
-    elif data.startswith("nedit:"):
-        nid = data.split(":", 1)[1]
-        if nid.isdigit():
-            if context.user_data is not None:
-                context.user_data["pending_note_edit"] = int(nid)
-            await query.edit_message_text(t("note_edit_prompt", lang, id=nid))
-        else:
-            await query.edit_message_text(t("action_unknown", lang))
     elif data.startswith("nfiles:"):
         nid = data.split(":", 1)[1]
         if nid.isdigit():
@@ -254,43 +313,6 @@ async def _note_callback(
         fid = data.split(":", 1)[1]
         if fid.isdigit():
             await query.edit_message_text(await note.detach_file(user, int(fid)))
-    elif data == "notes_home":
-        text, kb = await _notes_home(user)
-        await query.edit_message_text(text, reply_markup=kb)
-    elif data.startswith("nfolder:"):
-        fid = data.split(":", 1)[1]
-        if fid.isdigit():
-            text, kb = await _note_folder_view(user, int(fid))
-            await query.edit_message_text(text, reply_markup=kb)
-    elif data == "newnotefolder":
-        if context.user_data is not None:
-            context.user_data["pending_newfolder"] = "note"
-        await query.edit_message_text(t("folder_name_ask", lang))
-    elif data.startswith("movenote:"):
-        nid = data.split(":", 1)[1]
-        if nid.isdigit():
-            if not await folder.get_folders(user, "note"):
-                await query.edit_message_text(t("folder_no_folders", lang))
-            else:
-                text, kb = await _note_folder_chooser(user, int(nid))
-                await query.edit_message_text(text, reply_markup=kb)
-    elif data.startswith("movnto:"):
-        parts = data.split(":")
-        if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
-            target = None if parts[2] == "0" else int(parts[2])
-            await query.edit_message_text(await folder.move_note(user, int(parts[1]), target))
-        else:
-            await query.edit_message_text(t("action_unknown", lang))
-    elif data.startswith("delnfolder:"):
-        fid = data.split(":", 1)[1]
-        if fid.isdigit():
-            await query.edit_message_text(await folder.delete_folder(user, int(fid)))
-    elif data.startswith("viewnote:"):
-        nid = data.split(":", 1)[1]
-        if nid.isdigit():
-            res = await note.view_note(context, user, query.message.chat.id, int(nid))
-            if res:
-                await context.bot.send_message(query.message.chat.id, res)
     else:
         return False
     return True
