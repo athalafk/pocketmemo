@@ -16,26 +16,41 @@ Thanks for your interest in improving PocketMemo! 🎉
 git clone https://github.com/athalafk/pocketmemo.git
 cd pocketmemo
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env   # fill in your tokens
+```
+
+Run the tests before opening a PR. They use a temporary SQLite database and need no
+`.env`, secrets, or network:
+
+```bash
+pytest
 ```
 
 ## Adding a feature
 
-1. New user intents go in the intent classifier (`pocketmemo/services/llm.py`)
-   and are dispatched in `pocketmemo/bot/handlers.py`.
-2. Business logic belongs in a service module under `pocketmemo/services/`.
-3. Database changes require an Alembic migration:
+1. Business logic belongs in a service module under `pocketmemo/services/`.
+2. Expose it to natural-language chat as an agent tool in `pocketmemo/agent/tools.py`.
+   The legacy intent router (`Intent` in `pocketmemo/llm/service.py`, dispatched in
+   `pocketmemo/bot/messages.py`) is the fallback when the agent is off or fails.
+3. Telegram wiring lives in `pocketmemo/bot/`: `handlers.py` only registers handlers;
+   commands go in `commands.py`, button callbacks in `callbacks.py`, and message and
+   keyboard builders in `views.py`.
+4. Database changes require an Alembic migration:
    `alembic revision --autogenerate -m "describe change"`.
-4. Add both `en` and `id` strings for anything the user sees.
+5. Add both `en` and `id` strings for anything the user sees.
+6. Add or update tests under `tests/` for the behavior you change.
 
 ## Style
 
-- Formatting/lint: `ruff` (see `pyproject.toml`). Run `ruff check .` before a PR.
+- Formatting/lint: `ruff` (config in `pyproject.toml`; `pip install ruff`). The
+  codebase is not lint-clean yet, so run `ruff check` on the files you touch and
+  don't add new errors.
 - Keep functions small and typed. Prefer clear names over comments.
 
 ## Pull requests
 
+- Branch from `main` and open the PR against `main`.
 - Describe what changed and why.
-- Make sure the app still starts and migrations apply cleanly.
+- Make sure `pytest` passes, the app still starts, and migrations apply cleanly.
 - One logical change per PR where possible.

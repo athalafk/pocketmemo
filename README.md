@@ -260,8 +260,10 @@ Each green push to `main` then shows a **Review deployments** button in the Acti
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-# Run a local Postgres with pgvector, then set DATABASE_URL in your environment.
+pip install -r requirements.txt -r requirements-dev.txt
+cp .env.example .env
+# Simplest: INSTALL_METHOD=sqlite and DATABASE_URL=sqlite+aiosqlite:///./pocketmemo.db
+# (or point DATABASE_URL at a local PostgreSQL with pgvector)
 alembic upgrade head
 uvicorn pocketmemo.main:app --reload --port 8473
 ```
@@ -275,9 +277,9 @@ pip install -r requirements.txt -r requirements-dev.txt
 pytest
 ```
 
-It covers the cosine-distance math, secret encryption, English/Indonesian locale
-parity, settings parsing, the SQLite vector search end-to-end, and applying the Alembic
-migration on SQLite. GitHub Actions runs it, plus a Docker build, on every push and pull request
+It covers bot handlers and access checks, the agent harness, services, settings,
+encryption, locale parity, SQLite vector search, the Alembic migration, and the deploy
+script. GitHub Actions runs it, plus a Docker build, on every push and pull request
 (Python 3.11 & 3.12) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## ⚙️ Configuration
