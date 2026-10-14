@@ -223,8 +223,8 @@ restarts the bot. Your `.env` is never touched (it's git-ignored).
 Tagged releases (`v1.2.0`) also publish a Docker image to
 `ghcr.io/athalafk/pocketmemo` and a GitHub Release with notes
 ([`.github/workflows/release.yml`](.github/workflows/release.yml)). Each release is
-tagged with its full version and its minor line, e.g. `1.2.0` and `1.2` (there is no
-`latest` tag). To run the published image instead of building from source, replace
+tagged with its full version, its minor line, and `latest`, e.g. `1.2.0`, `1.2`, and
+`latest`. To run the published image instead of building from source, replace
 `build: .` in `docker-compose.yml` with:
 
 ```yaml
