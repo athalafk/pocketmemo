@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
@@ -228,3 +229,88 @@ class AgentRunnerTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.tool_calls, ("memories", "reminders"))
         self.assertIn("Tidak ada memory", result.reply or "")
         self.assertIn("safe final-answer generator", systems[-1])
+
+    async def test_tool_errors_are_fed_back_as_observations(self) -> None:
+        from pocketmemo.agent import ToolInputError
+
+        async def bad_input(context: AgentContext, arguments: dict) -> ToolResult:
+            raise ToolInputError("'query' must be a non-empty string.")
+
+        async def slow(context: AgentContext, arguments: dict) -> ToolResult:
+            await asyncio.sleep(1)
+            return ToolResult(observation="late")
+
+        async def broken(context: AgentContext, arguments: dict) -> ToolResult:
+            raise RuntimeError("secret internal detail")
+
+        decisions = iter(
+            [
+                {"type": "tool", "tool": "bad_input", "arguments": {}},
+                {"type": "tool", "tool": "slow", "arguments": {}},
+                {"type": "tool", "tool": "broken", "arguments": {}},
+                {"type": "final", "answer": "done"},
+            ]
+        )
+        prompts: list[str] = []
+
+        async def planner(prompt: str, system: str) -> dict:
+            prompts.append(prompt)
+            return next(decisions)
+
+        tools = {
+            name: AgentTool(name=name, description=name, parameters={}, execute=fn)
+            for name, fn in (("bad_input", bad_input), ("slow", slow), ("broken", broken))
+        }
+        runner = AgentRunner(planner=planner, tools=tools, tool_timeout_seconds=0.01)
+        result = await runner.run(message="x", history=[], language="en", context=_context())
+
+        self.assertEqual(result.reply, "done")
+        self.assertEqual(result.tool_calls, ("bad_input", "slow", "broken"))
+        self.assertIn("must be a non-empty string", prompts[3])
+        self.assertIn("Tool timed out.", prompts[3])
+        self.assertIn("Tool failed.", prompts[3])
+        self.assertNotIn("secret internal detail", prompts[3])
+
+    async def test_duplicate_and_unknown_tool_calls_are_rejected(self) -> None:
+        executed: list[dict] = []
+
+        async def lookup(context: AgentContext, arguments: dict) -> ToolResult:
+            executed.append(arguments)
+            return ToolResult(observation="found")
+
+        decisions = iter(
+            [
+                {"type": "tool", "tool": "lookup", "arguments": {"q": "a"}},
+                {"type": "tool", "tool": "lookup", "arguments": {"q": "a"}},
+                {"type": "tool", "tool": "nope", "arguments": {}},
+                {"type": "final", "answer": "ok"},
+            ]
+        )
+
+        async def planner(prompt: str, system: str) -> dict:
+            return next(decisions)
+
+        tool = AgentTool(name="lookup", description="", parameters={}, execute=lookup)
+        runner = AgentRunner(planner=planner, tools={"lookup": tool})
+        result = await runner.run(message="x", history=[], language="en", context=_context())
+
+        self.assertEqual(executed, [{"q": "a"}])
+        self.assertEqual(result.tool_calls, ("lookup",))
+        self.assertEqual(result.reply, "ok")
+
+    async def test_safe_reply_when_finalizer_also_fails(self) -> None:
+        async def planner(prompt: str, system: str) -> dict:
+            if "lookup" in prompt and '"observation"' not in prompt:
+                return {"type": "tool", "tool": "lookup", "arguments": {}}
+            return {"type": "invalid"}
+
+        async def lookup(context: AgentContext, arguments: dict) -> ToolResult:
+            return ToolResult(observation="found")
+
+        tool = AgentTool(name="lookup", description="", parameters={}, execute=lookup)
+        runner = AgentRunner(planner=planner, tools={"lookup": tool}, max_steps=2)
+        result = await runner.run(message="x", history=[], language="id", context=_context())
+
+        self.assertTrue(result.handled)
+        self.assertEqual(result.fallback_reason, "safe_finalization_failed")
+        self.assertTrue(result.reply.startswith("Maaf"))
