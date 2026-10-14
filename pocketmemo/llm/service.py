@@ -96,14 +96,14 @@ def _make_provider() -> LLMProvider:
     if name == "openai":
         return OpenAIProvider(
             api_key=settings_store.get_secret("openai_api_key") or _settings.openai_api_key,
-            base_url=_eff("openai_base_url", _settings.openai_base_url),
+            base_url=_settings.openai_base_url,
             chat_model=_eff("openai_chat_model", _settings.openai_chat_model),
             embedding_model=_eff("openai_embedding_model", _settings.openai_embedding_model),
             embedding_dim=_settings.embedding_dim,
         )
     if name == "ollama":
         return OllamaProvider(
-            base_url=_eff("ollama_base_url", _settings.ollama_base_url),
+            base_url=_settings.ollama_base_url,
             chat_model=_eff("ollama_chat_model", _settings.ollama_chat_model),
             embedding_model=_eff("ollama_embedding_model", _settings.ollama_embedding_model),
         )

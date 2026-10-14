@@ -71,13 +71,13 @@ async def _settings_callback(
 ) -> bool:
     """Language and LLM provider settings."""
     lang = user.language
-    llm_actions = ("llmprov:", "llmmodel:", "pickmodel:", "llmmodeltype:", "llmkey:", "llmurl:")
+    llm_actions = ("llmprov:", "llmmodel:", "pickmodel:", "llmmodeltype:", "llmkey:")
     # Same rule as /llm: shared LLM settings may only change when an allowlist exists.
     if data.startswith(llm_actions) and not _settings.allowed_user_ids_set:
         await query.edit_message_text(t("llm_admin_only", lang))
         return True
     # The provider becomes part of a settings key, so only known names are accepted.
-    provider_actions = ("llmprov:", "llmmodel:", "llmmodeltype:", "llmkey:", "llmurl:")
+    provider_actions = ("llmprov:", "llmmodel:", "llmmodeltype:", "llmkey:")
     if data.startswith(provider_actions) and data.split(":", 1)[1] not in _LLM_PROVIDERS:
         await query.edit_message_text(t("action_unknown", lang))
         return True
@@ -139,11 +139,6 @@ async def _settings_callback(
         if context.user_data is not None:
             context.user_data["pending_setting"] = {"skey": f"{prov}_api_key", "secret": True}
         await query.edit_message_text(t("llm_ask_key", lang))
-    elif data.startswith("llmurl:"):
-        prov = data.split(":", 1)[1]
-        if context.user_data is not None:
-            context.user_data["pending_setting"] = {"skey": f"{prov}_base_url", "secret": False}
-        await query.edit_message_text(t("llm_ask_url", lang))
     else:
         return False
     return True
